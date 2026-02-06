@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Merge Conflicts - worktreefoundry</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <a href="/?ws={{.Workspace}}">worktreefoundry</a>
+  <span class="muted">merge conflicts for {{.Workspace}}</span>
+</header>
+<main>
+  <section class="panel">
+    <h2>Field-Level Conflicts</h2>
+    <p class="muted">Choose a value for each conflicting field.</p>
+    <form method="post" action="/workspaces/merge">
+      <input type="hidden" name="ws" value="{{.Workspace}}">
+      {{range .Conflicts}}
+      <div class="panel" style="margin-top: 0.8rem;">
+        <div><strong>{{.File}}</strong> <span class="code">{{.Field}}</span></div>
+        <table class="table">
+          <tbody>
+            <tr><th>Base</th><td>{{.Base}}</td></tr>
+            <tr><th>Main</th><td>{{.Main}}</td></tr>
+            <tr><th>Workspace</th><td>{{.WorkspaceValue}}</td></tr>
+          </tbody>
+        </table>
+        <label><input type="radio" name="resolve.{{.Key}}" value="main" required> Take main</label>
+        <label><input type="radio" name="resolve.{{.Key}}" value="workspace"> Take workspace</label>
+        <label><input type="radio" name="resolve.{{.Key}}" value="manual"> Manual</label>
+        <input type="text" name="manual.{{.Key}}" placeholder="manual value (comma-separated for arrays)">
+      </div>
+      {{end}}
+      <button class="primary" type="submit">Complete Merge</button>
+    </form>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Object - worktreefoundry</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+<header>
+  <a href="/?ws={{.Workspace}}">worktreefoundry</a>
+  <span class="muted">{{.Type}} / {{if .ID}}{{.ID}}{{else}}new{{end}} | workspace {{.Workspace}}</span>
+</header>
+<main>
+  {{if .Flash}}
+  <div class="panel {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</div>
+  {{end}}
+
+  {{if .ReadOnly}}
+    <div class="panel error">Main is read-only. Select a workspace to edit.</div>
+  {{end}}
+
+  <div class="row">
+    <div class="col">
+      <section class="panel">
+        <h2>Edit Object</h2>
+        <form method="post" action="/object/save">
+          <input type="hidden" name="ws" value="{{.Workspace}}">
+          <input type="hidden" name="type" value="{{.Type}}">
+          {{if .ID}}<input type="hidden" name="id" value="{{.ID}}">{{end}}
+
+          {{range .Fields}}
+            {{$fieldName := .Name}}
+            {{$fieldValue := index $.FieldValues .Name}}
+            <label>{{$fieldName}} {{if .Required}}*{{end}}</label>
+            {{if eq .Type "string"}}
+              {{if .Enum}}
+                <select name="field.{{$fieldName}}" {{if $.ReadOnly}}disabled{{end}}>
+                  <option value=""></option>
+                  {{range .Enum}}
+                    <option value="{{.}}" {{if eq $fieldValue .}}selected{{end}}>{{.}}</option>
+                  {{end}}
+                </select>
+              {{else}}
+                <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" {{if $.ReadOnly}}disabled{{end}}>
+              {{end}}
+            {{else if or (eq .Type "number") (eq .Type "integer")}}
+              <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" {{if $.ReadOnly}}disabled{{end}}>
+            {{else if eq .Type "boolean"}}
+              <select name="field.{{$fieldName}}" {{if $.ReadOnly}}disabled{{end}}>
+                <option value=""></option>
+                <option value="true" {{if eq $fieldValue "true"}}selected{{end}}>true</option>
+                <option value="false" {{if eq $fieldValue "false"}}selected{{end}}>false</option>
+              </select>
+            {{else if eq .Type "array"}}
+              <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" {{if $.ReadOnly}}disabled{{end}}>
+              <div class="muted">Comma-separated {{.ItemsType}} values</div>
+            {{end}}
+          {{end}}
+
+          {{if not .ReadOnly}}
+          <div style="margin-top: 1rem;">
+            <button class="primary" type="submit">Save Object File</button>
+          </div>
+          {{end}}
+        </form>
+
+        {{if and (not .ReadOnly) .ID}}
+          <form method="post" action="/object/delete" style="margin-top: 0.75rem;">
+            <input type="hidden" name="ws" value="{{.Workspace}}">
+            <input type="hidden" name="type" value="{{.Type}}">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <button class="danger" type="submit">Delete Object</button>
+          </form>
+        {{end}}
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <h3>Field Diff (main vs workspace)</h3>
+        {{if .Diffs}}
+          <table class="table">
+            <thead><tr><th>Field</th><th>Main</th><th>Workspace</th><th>Status</th></tr></thead>
+            <tbody>
+              {{range .Diffs}}
+                <tr>
+                  <td><span class="code">{{.Field}}</span></td>
+                  <td>{{.Main}}</td>
+                  <td>{{.Workspace}}</td>
+                  <td>{{.Status}}</td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        {{else}}
+          <p class="muted">No differences.</p>
+        {{end}}
+      </section>
+    </div>
+  </div>
+</main>
+</body>
+</html>

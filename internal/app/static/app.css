@@ -1,0 +1,90 @@
+:root {
+  --bg: #f7f6f1;
+  --fg: #1a1d1f;
+  --muted: #5a646b;
+  --panel: #ffffff;
+  --line: #d8dbde;
+  --accent: #1e6a53;
+  --danger: #a12727;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at top left, #e7f0e9, var(--bg) 45%);
+  color: var(--fg);
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+.row { display: flex; gap: 1rem; align-items: start; }
+.col { flex: 1; min-width: 0; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.panel h2, .panel h3 { margin-top: 0; }
+.muted { color: var(--muted); }
+.error { color: var(--danger); }
+.ok { color: var(--accent); }
+ul { margin-top: 0.5rem; }
+label { display: block; margin-top: 0.75rem; font-weight: 600; }
+input, select, textarea, button {
+  font: inherit;
+}
+input[type="text"], input[type="number"], select, textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.45rem 0.5rem;
+  margin-top: 0.25rem;
+  background: #fff;
+}
+button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.45rem 0.8rem;
+  background: #fff;
+  cursor: pointer;
+}
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th, .table td {
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  padding: 0.4rem;
+  vertical-align: top;
+}
+.code {
+  font-family: ui-monospace, Menlo, monospace;
+  background: #f5f7f8;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+}
+@media (max-width: 900px) {
+  .row { flex-direction: column; }
+}
