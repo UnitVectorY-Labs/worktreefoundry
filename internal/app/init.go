@@ -57,6 +57,15 @@ func InitializeRepository(root string, force bool, sample bool) error {
 			return err
 		}
 	}
+	schemas, err := LoadSchemas(abs)
+	if err != nil && sample {
+		return err
+	}
+	if err == nil {
+		if err := SaveUIConfig(abs, DefaultUIConfig(abs, schemas)); err != nil {
+			return err
+		}
+	}
 	if err := ensureGitignoreDefaults(abs); err != nil {
 		return err
 	}

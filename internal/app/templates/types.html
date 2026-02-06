@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Types</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "topbar" .Top}}
+  <main class="page">
+    {{if .Flash}}
+    <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
+    {{end}}
+
+    <section class="panel">
+      <div class="panel-head">
+        <h1>Data Types</h1>
+        <p>Choose a type to browse and edit objects.</p>
+      </div>
+      <div class="type-grid">
+        {{range .Types}}
+        <a class="type-card {{if gt .DirtyCount 0}}type-card-dirty{{end}}" href="/w/{{$.Top.Workspace}}/types/{{.Name}}">
+          <div class="type-title">{{.Name}}</div>
+          <div class="type-meta">{{.Count}} object{{if ne .Count 1}}s{{end}}</div>
+          {{if gt .DirtyCount 0}}
+          <div class="type-dirty">{{.DirtyCount}} unsaved change{{if ne .DirtyCount 1}}s{{end}}</div>
+          {{end}}
+        </a>
+        {{end}}
+      </div>
+    </section>
+  </main>
+</body>
+</html>

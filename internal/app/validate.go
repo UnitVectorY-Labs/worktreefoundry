@@ -23,6 +23,14 @@ func ValidateRepository(root string) (ValidationResult, error) {
 		result.Add(ValidationIssue{Stage: "constraints", Path: "config/constraints.json", Message: err.Error()})
 		return result, nil
 	}
+	uiConfig, err := LoadUIConfig(root, schemas)
+	if err != nil {
+		result.Add(ValidationIssue{Stage: "config", Path: "config/ui.json", Message: err.Error()})
+		return result, nil
+	}
+	for _, issue := range ValidateUIConfig(uiConfig, schemas) {
+		result.Add(issue)
+	}
 
 	objectsByType, parseIssues := loadObjectsWithIssues(root)
 	for _, issue := range parseIssues {
@@ -95,6 +103,7 @@ func validateLayout(root string, result *ValidationResult) {
 			case entry.IsDir() && entry.Name() == "schemas":
 				validateSchemaLayout(root, result)
 			case !entry.IsDir() && entry.Name() == "constraints.json":
+			case !entry.IsDir() && entry.Name() == "ui.json":
 			default:
 				p := filepath.ToSlash(filepath.Join("config", entry.Name()))
 				result.Add(ValidationIssue{Stage: "layout", Path: p, Message: "file is not allowed under config/"})

@@ -28,6 +28,11 @@ type Workspace struct {
 	ChangedFiles []string
 }
 
+type ChangedEntry struct {
+	Path   string
+	Status string
+}
+
 func OpenRepository(root, workspaceRoot string) (*Repository, error) {
 	if root == "" {
 		return nil, errors.New("repository root required")
@@ -185,12 +190,25 @@ func (r *Repository) ListWorkspaces() ([]Workspace, error) {
 }
 
 func (r *Repository) ChangedFiles(repoPath string) ([]string, error) {
+	entries, err := r.ChangedEntries(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	changed := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		changed = append(changed, entry.Path)
+	}
+	sort.Strings(changed)
+	return changed, nil
+}
+
+func (r *Repository) ChangedEntries(repoPath string) ([]ChangedEntry, error) {
 	out, err := r.runGit(repoPath, "status", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	var changed []string
+	var changed []ChangedEntry
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -198,6 +216,7 @@ func (r *Repository) ChangedFiles(repoPath string) ([]string, error) {
 		if len(line) < 4 {
 			continue
 		}
+		statusToken := line[:2]
 		path := strings.TrimSpace(line[3:])
 		if strings.Contains(path, " -> ") {
 			parts := strings.Split(path, " -> ")
@@ -207,14 +226,29 @@ func (r *Repository) ChangedFiles(repoPath string) ([]string, error) {
 		if isIgnoredAppPath(path) {
 			continue
 		}
-		changed = append(changed, path)
+		changed = append(changed, ChangedEntry{
+			Path:   path,
+			Status: statusFromToken(statusToken),
+		})
 	}
-	sort.Strings(changed)
 	return changed, nil
 }
 
 func isIgnoredAppPath(path string) bool {
 	return strings.HasPrefix(path, ".worktreefoundry/") || strings.HasPrefix(path, "output/")
+}
+
+func statusFromToken(token string) string {
+	switch {
+	case token == "??":
+		return "A"
+	case strings.Contains(token, "D"):
+		return "D"
+	case strings.Contains(token, "A"):
+		return "A"
+	default:
+		return "M"
+	}
 }
 
 func (r *Repository) SaveWorkspace(name, message string) ([]string, error) {
@@ -275,4 +309,19 @@ func (r *Repository) runGit(dir string, args ...string) (string, error) {
 
 func (r *Repository) RunGit(dir string, args ...string) (string, error) {
 	return r.runGit(dir, args...)
+}
+
+func (r *Repository) RestoreObject(workspace, typeName, id string) error {
+	if workspace == "" || workspace == "main" {
+		return errors.New("cannot restore in main workspace")
+	}
+	path := r.WorkspacePath(workspace)
+	rel := filepath.ToSlash(filepath.Join("data", typeName, id+".yaml"))
+	if _, err := r.runGit(path, "checkout", "--", rel); err == nil {
+		return nil
+	}
+	if _, err := r.runGit(path, "checkout", "main", "--", rel); err != nil {
+		return err
+	}
+	return nil
 }

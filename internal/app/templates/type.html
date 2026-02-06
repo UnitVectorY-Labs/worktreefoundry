@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{.TypeName}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "topbar" .Top}}
+  <main class="page">
+    {{if .Flash}}
+    <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
+    {{end}}
+
+    <section class="panel">
+      <div class="panel-head row-between">
+        <div>
+          <h1>{{.TypeName}}</h1>
+          <p>Display field: <code>{{.DisplayField}}</code></p>
+        </div>
+        <div class="actions">
+          <a class="btn" href="{{.TypeConfigURL}}">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0"/><path d="M9 12a3 3 0 1 0 6 0"/></svg>
+            Type Config
+          </a>
+          {{if not .ReadOnly}}
+          <a class="btn primary" href="{{.NewItemURL}}">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
+            Add Item
+          </a>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="item-list">
+        {{if .Items}}
+          {{range .Items}}
+          <article class="item-card {{if .Deleted}}deleted{{end}} {{if .Dirty}}dirty-{{.Dirty}}{{end}}">
+            <div class="item-head row-between">
+              <div>
+                <div class="item-title">{{.Display}}</div>
+                <div class="item-id"><code>{{.ID}}</code></div>
+              </div>
+              <div class="actions">
+                {{if .Deleted}}
+                <span class="badge muted">deleted (draft)</span>
+                <form method="post" action="{{.RestoreURL}}" class="inline-form">
+                  <button class="btn" type="submit">Restore</button>
+                </form>
+                {{else}}
+                  {{if .Dirty}}<span class="badge">{{.Dirty}} draft</span>{{end}}
+                  <a class="btn" href="{{.OpenURL}}">Open</a>
+                  {{if $.ReadOnly}}{{else}}
+                  <form method="post" action="{{.DeleteURL}}" class="inline-form">
+                    <button class="btn danger" type="submit">Delete</button>
+                  </form>
+                  {{end}}
+                {{end}}
+              </div>
+            </div>
+            {{if .Fields}}
+            <div class="item-fields">
+              {{range .Fields}}
+              <div class="item-field"><span>{{.Name}}</span><strong>{{.Value}}</strong></div>
+              {{end}}
+            </div>
+            {{end}}
+          </article>
+          {{end}}
+        {{else}}
+          <p class="muted">No objects.</p>
+        {{end}}
+      </div>
+    </section>
+  </main>
+</body>
+</html>

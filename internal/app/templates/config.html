@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Configuration</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  {{template "topbar" .Top}}
+  <main class="page">
+    {{if .Flash}}
+    <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
+    {{end}}
+
+    <section class="panel">
+      <div class="panel-head">
+        <h1>Repository Configuration</h1>
+      </div>
+      <form method="post" action="{{.SaveURL}}" class="form-grid">
+        <label>Repository Name</label>
+        <input type="text" name="repoName" value="{{.RepoName}}" {{if .ReadOnly}}disabled{{end}}>
+        {{if not .ReadOnly}}
+        <div class="actions" style="margin-top:0.8rem;">
+          <button class="btn primary" type="submit">Update Draft</button>
+        </div>
+        {{end}}
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Type Display Configuration</h2>
+      </div>
+      <div class="item-list">
+        {{range .TypeSettings}}
+        <article class="item-card">
+          <div class="row-between">
+            <div class="item-title">{{.TypeName}}</div>
+            <a class="btn" href="{{.URL}}">Configure</a>
+          </div>
+        </article>
+        {{end}}
+      </div>
+    </section>
+  </main>
+</body>
+</html>
