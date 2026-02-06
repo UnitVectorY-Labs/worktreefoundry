@@ -9,17 +9,27 @@
 <body>
   {{template "topbar" .Top}}
   <main class="page">
+    {{template "breadcrumbs" .Crumbs}}
     {{if .Flash}}
     <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
     {{end}}
 
+    {{if .InvalidIssues}}
+    <section class="notice error">
+      <strong>Draft currently has validation issues.</strong>
+      <ul>
+        {{range .InvalidIssues}}
+        <li><code>{{.Stage}}</code> {{if .Field}}<code>{{.Field}}</code>{{end}} {{.Message}}</li>
+        {{end}}
+      </ul>
+      <div class="muted">You can keep editing drafts, but Save will fail until this is fixed.</div>
+    </section>
+    {{end}}
+
     <section class="panel">
-      <div class="panel-head row-between">
-        <div>
-          <h1>{{.TypeName}} {{if .ID}}Item{{else}}New Item{{end}}</h1>
-          {{if .ID}}<p><code>{{.ID}}</code></p>{{end}}
-        </div>
-        <a class="btn" href="{{.BackURL}}">Back to list</a>
+      <div class="panel-head">
+        <h1>{{.TypeName}} {{if .ID}}Item{{else}}New Item{{end}}</h1>
+        {{if .ID}}<p><code>{{.ID}}</code></p>{{end}}
       </div>
 
       {{if .Missing}}
@@ -32,52 +42,62 @@
         {{end}}
       </div>
       {{else}}
-      <form method="post" action="{{.WriteURL}}" class="form-grid">
+      <form method="post" action="{{.WriteURL}}" class="form-grid" id="object-form" novalidate>
         <input type="hidden" name="id" value="{{.ID}}">
 
         {{range .Fields}}
           {{$fieldName := .Name}}
           {{$fieldValue := index $.FieldValues .Name}}
-          <label>{{$fieldName}} {{if .Required}}*{{end}}</label>
-          {{if eq .Type "string"}}
-            {{if .Enum}}
-              <select name="field.{{$fieldName}}" {{if $.ReadOnly}}disabled{{end}}>
+          <div class="field-wrap" data-field="{{$fieldName}}">
+            <label>{{$fieldName}} {{if .Required}}*{{end}}</label>
+            {{if .ForeignKey}}
+              <select name="field.{{$fieldName}}" data-type="{{if .Type}}{{.Type}}{{else}}string{{end}}" data-required="{{.Required}}" {{if $.ReadOnly}}disabled{{end}}>
                 <option value=""></option>
-                {{range .Enum}}
-                  <option value="{{.}}" {{if eq $fieldValue .}}selected{{end}}>{{.}}</option>
+                {{range .ForeignKey.Options}}
+                  <option value="{{.Value}}" {{if eq $fieldValue .Value}}selected{{end}}>{{.Display}}</option>
                 {{end}}
               </select>
-            {{else}}
-              <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" {{if $.ReadOnly}}disabled{{end}}>
+            {{else if eq .Type "string"}}
+              {{if .Enum}}
+                <select name="field.{{$fieldName}}" data-type="string" data-required="{{.Required}}" data-enum="{{range $i, $e := .Enum}}{{if $i}}|{{end}}{{$e}}{{end}}" data-minlen="{{if .MinLength}}{{.MinLength}}{{end}}" data-maxlen="{{if .MaxLength}}{{.MaxLength}}{{end}}" {{if $.ReadOnly}}disabled{{end}}>
+                  <option value=""></option>
+                  {{range .Enum}}
+                    <option value="{{.}}" {{if eq $fieldValue .}}selected{{end}}>{{.}}</option>
+                  {{end}}
+                </select>
+              {{else}}
+                <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" data-type="string" data-required="{{.Required}}" data-minlen="{{if .MinLength}}{{.MinLength}}{{end}}" data-maxlen="{{if .MaxLength}}{{.MaxLength}}{{end}}" {{if $.ReadOnly}}disabled{{end}}>
+              {{end}}
+            {{else if or (eq .Type "number") (eq .Type "integer")}}
+              <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" data-type="{{.Type}}" data-required="{{.Required}}" data-min="{{if .Minimum}}{{.Minimum}}{{end}}" data-max="{{if .Maximum}}{{.Maximum}}{{end}}" {{if $.ReadOnly}}disabled{{end}}>
+            {{else if eq .Type "boolean"}}
+              <select name="field.{{$fieldName}}" data-type="boolean" data-required="{{.Required}}" {{if $.ReadOnly}}disabled{{end}}>
+                <option value=""></option>
+                <option value="true" {{if eq $fieldValue "true"}}selected{{end}}>true</option>
+                <option value="false" {{if eq $fieldValue "false"}}selected{{end}}>false</option>
+              </select>
+            {{else if eq .Type "array"}}
+              <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" data-type="array" data-item-type="{{.ItemsType}}" data-required="{{.Required}}" {{if $.ReadOnly}}disabled{{end}}>
+              <div class="hint">Comma-separated {{.ItemsType}} values</div>
             {{end}}
-          {{else if or (eq .Type "number") (eq .Type "integer")}}
-            <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" {{if $.ReadOnly}}disabled{{end}}>
-          {{else if eq .Type "boolean"}}
-            <select name="field.{{$fieldName}}" {{if $.ReadOnly}}disabled{{end}}>
-              <option value=""></option>
-              <option value="true" {{if eq $fieldValue "true"}}selected{{end}}>true</option>
-              <option value="false" {{if eq $fieldValue "false"}}selected{{end}}>false</option>
-            </select>
-          {{else if eq .Type "array"}}
-            <input type="text" name="field.{{$fieldName}}" value="{{$fieldValue}}" {{if $.ReadOnly}}disabled{{end}}>
-            <div class="hint">Comma-separated {{.ItemsType}} values</div>
-          {{end}}
+            <div class="field-error" id="err-{{$fieldName}}"></div>
+          </div>
         {{end}}
 
         {{if not .ReadOnly}}
+        <div class="notice warn" id="draft-validation-banner" style="display:none;">
+          This draft has client-side validation warnings. You can still update the draft.
+        </div>
         <div class="actions" style="margin-top:0.8rem;">
-          <button class="btn primary" type="submit">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2"/><path d="M6 12h12"/></svg>
-            Update Draft
-          </button>
-          {{if .ID}}
-          <form method="post" action="{{.DeleteURL}}" class="inline-form">
-            <button class="btn danger" type="submit">Delete Item</button>
-          </form>
-          {{end}}
+          <button class="btn primary" type="submit">Update Draft</button>
         </div>
         {{end}}
       </form>
+      {{if and (not .ReadOnly) .ID}}
+      <form method="post" action="{{.DeleteURL}}" class="inline-form" style="margin-top:0.6rem;">
+        <button class="btn danger" type="submit">Delete Item</button>
+      </form>
+      {{end}}
       {{end}}
 
       {{if .Diffs}}
@@ -100,5 +120,99 @@
       {{end}}
     </section>
   </main>
+
+<script>
+(() => {
+  const form = document.getElementById('object-form');
+  if (!form) return;
+  const banner = document.getElementById('draft-validation-banner');
+
+  const toNumber = (v) => {
+    if (v === undefined || v === null) return null;
+    if (String(v).trim() === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  function validateField(el) {
+    const fieldWrap = el.closest('.field-wrap');
+    const errorEl = fieldWrap.querySelector('.field-error');
+    const required = el.dataset.required === 'true';
+    const type = el.dataset.type;
+    const raw = (el.value || '').trim();
+    const errors = [];
+
+    if (required && raw === '') {
+      errors.push('Required field');
+    }
+
+    if (raw !== '') {
+      if (type === 'string') {
+        const minLen = toNumber(el.dataset.minlen);
+        const maxLen = toNumber(el.dataset.maxlen);
+        if (minLen !== null && raw.length < minLen) errors.push(`Minimum length is ${minLen}`);
+        if (maxLen !== null && raw.length > maxLen) errors.push(`Maximum length is ${maxLen}`);
+        if (el.dataset.enum) {
+          const allowed = el.dataset.enum.split('|');
+          if (!allowed.includes(raw)) errors.push('Value must be from enum');
+        }
+      } else if (type === 'number' || type === 'integer') {
+        const n = toNumber(raw);
+        if (n === null) {
+          errors.push('Must be a number');
+        } else {
+          if (type === 'integer' && !Number.isInteger(n)) errors.push('Must be an integer');
+          const min = toNumber(el.dataset.min);
+          const max = toNumber(el.dataset.max);
+          if (min !== null && n < min) errors.push(`Must be >= ${min}`);
+          if (max !== null && n > max) errors.push(`Must be <= ${max}`);
+        }
+      } else if (type === 'boolean') {
+        if (!(raw === 'true' || raw === 'false')) errors.push('Must be true or false');
+      } else if (type === 'array') {
+        const itemType = el.dataset.itemType;
+        const parts = raw.split(',').map(v => v.trim()).filter(Boolean);
+        if (required && parts.length === 0) errors.push('Required field');
+        if (itemType === 'integer' || itemType === 'number') {
+          for (const part of parts) {
+            const n = toNumber(part);
+            if (n === null) {
+              errors.push('Array items must be numbers');
+              break;
+            }
+            if (itemType === 'integer' && !Number.isInteger(n)) {
+              errors.push('Array items must be integers');
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      fieldWrap.classList.add('field-invalid');
+      errorEl.textContent = errors[0];
+      return false;
+    }
+    fieldWrap.classList.remove('field-invalid');
+    errorEl.textContent = '';
+    return true;
+  }
+
+  function validateAll() {
+    let allValid = true;
+    form.querySelectorAll('input[name^="field."], select[name^="field."]').forEach((el) => {
+      if (!validateField(el)) allValid = false;
+    });
+    if (banner) banner.style.display = allValid ? 'none' : 'block';
+  }
+
+  form.querySelectorAll('input[name^="field."], select[name^="field."]').forEach((el) => {
+    el.addEventListener('input', () => validateAll());
+    el.addEventListener('change', () => validateAll());
+  });
+  validateAll();
+})();
+</script>
 </body>
 </html>

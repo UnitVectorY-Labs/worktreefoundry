@@ -9,6 +9,7 @@
 <body>
   {{template "topbar" .Top}}
   <main class="page">
+    {{template "breadcrumbs" .Crumbs}}
     {{if .Flash}}
     <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
     {{end}}

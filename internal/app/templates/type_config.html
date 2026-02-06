@@ -9,14 +9,14 @@
 <body>
   {{template "topbar" .Top}}
   <main class="page">
+    {{template "breadcrumbs" .Crumbs}}
     {{if .Flash}}
     <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
     {{end}}
 
     <section class="panel">
-      <div class="panel-head row-between">
+      <div class="panel-head">
         <h1>{{.TypeName}} Display Settings</h1>
-        <a class="btn" href="{{.BackURL}}">Back to {{.TypeName}}</a>
       </div>
       <form method="post" action="{{.SaveURL}}" class="form-grid">
         <label>Display Field</label>
@@ -26,15 +26,19 @@
           {{end}}
         </select>
 
-        <label>Additional Fields (display order)</label>
-        <div class="check-stack">
-          {{range .ExtraOptions}}
-          <label class="checkline">
-            <input type="checkbox" name="extraField" value="{{.Name}}" {{if .Checked}}checked{{end}} {{if $.ReadOnly}}disabled{{end}}>
-            <span>{{.Name}}</span>
-          </label>
-          {{end}}
-        </div>
+        <label>Additional Fields</label>
+        <table class="table table-tight">
+          <thead><tr><th>Use</th><th>Field</th><th>Order</th></tr></thead>
+          <tbody>
+            {{range .ExtraOptions}}
+            <tr>
+              <td><input type="checkbox" name="extraField" value="{{.Name}}" {{if .Checked}}checked{{end}} {{if $.ReadOnly}}disabled{{end}}></td>
+              <td>{{.Name}}</td>
+              <td><input type="text" name="order.{{.Name}}" value="{{.Order}}" style="width:5rem" {{if $.ReadOnly}}disabled{{end}}></td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
 
         {{if not .ReadOnly}}
         <div class="actions" style="margin-top:0.9rem;">

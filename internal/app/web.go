@@ -36,8 +36,15 @@ type topBarData struct {
 
 type pageBase struct {
 	Top        topBarData
+	Crumbs     []breadcrumb
 	Flash      string
 	FlashError bool
+}
+
+type breadcrumb struct {
+	Label   string
+	URL     string
+	Current bool
 }
 
 type typesPageData struct {
@@ -49,28 +56,32 @@ type typeSummary struct {
 	Name       string
 	Count      int
 	DirtyCount int
+	ConfigURL  string
 }
 
 type typePageData struct {
 	pageBase
-	TypeName      string
-	ReadOnly      bool
-	DisplayField  string
-	ExtraFields   []string
-	Items         []objectListItem
-	TypeConfigURL string
-	NewItemURL    string
+	TypeName       string
+	ReadOnly       bool
+	DisplayField   string
+	PrimaryHeading string
+	ExtraFields    []string
+	Items          []objectListItem
+	TypeConfigURL  string
+	NewItemURL     string
 }
 
 type objectListItem struct {
-	ID         string
-	Display    string
-	Fields     []namedValue
-	Dirty      string
-	Deleted    bool
-	OpenURL    string
-	DeleteURL  string
-	RestoreURL string
+	ID            string
+	Display       string
+	PrimaryURL    string
+	Fields        []namedValue
+	Dirty         string
+	Deleted       bool
+	RestoreURL    string
+	Invalid       bool
+	InvalidCount  int
+	InvalidSample string
 }
 
 type namedValue struct {
@@ -89,18 +100,34 @@ type objectPageData struct {
 	RestoreURL    string
 	WriteURL      string
 	DeleteURL     string
-	BackURL       string
 	Fields        []fieldData
 	FieldValues   map[string]string
 	Diffs         []fieldDiff
+	InvalidIssues []ValidationIssue
 }
 
 type fieldData struct {
-	Name      string
-	Type      string
-	ItemsType string
-	Required  bool
-	Enum      []string
+	Name       string
+	Type       string
+	ItemsType  string
+	Required   bool
+	Enum       []string
+	MinLength  string
+	MaxLength  string
+	Minimum    string
+	Maximum    string
+	ForeignKey *foreignKeyField
+}
+
+type foreignKeyField struct {
+	ValueField   string
+	DisplayField string
+	Options      []foreignKeyOption
+}
+
+type foreignKeyOption struct {
+	Value   string
+	Display string
 }
 
 type fieldDiff struct {
@@ -147,6 +174,7 @@ type displayOption struct {
 type extraOption struct {
 	Name    string
 	Checked bool
+	Order   int
 }
 
 type conflictView struct {
@@ -171,10 +199,12 @@ type workspaceContext struct {
 	RepoPath       string
 	ReadOnly       bool
 	Schemas        map[string]Schema
+	Constraints    Constraints
 	UI             UIConfig
 	Workspaces     []Workspace
 	WorkspaceDirty bool
 	DirtyByType    map[string]map[string]string
+	ObjectIssues   map[string]map[string][]ValidationIssue
 }
 
 func StartWebServer(ctx context.Context, repo *Repository, addr string) error {
@@ -318,6 +348,10 @@ func (s *webServer) loadContext(workspace string) (workspaceContext, error) {
 	if err != nil {
 		return workspaceContext{}, err
 	}
+	constraints, err := LoadConstraints(repoPath)
+	if err != nil {
+		return workspaceContext{}, err
+	}
 	ui, err := LoadUIConfig(repoPath, schemas)
 	if err != nil {
 		return workspaceContext{}, err
@@ -327,14 +361,21 @@ func (s *webServer) loadContext(workspace string) (workspaceContext, error) {
 		return workspaceContext{}, err
 	}
 	ctx := workspaceContext{
-		Workspace:   workspace,
-		RepoPath:    repoPath,
-		ReadOnly:    readOnly,
-		Schemas:     schemas,
-		UI:          ui,
-		Workspaces:  workspaces,
-		DirtyByType: map[string]map[string]string{},
+		Workspace:    workspace,
+		RepoPath:     repoPath,
+		ReadOnly:     readOnly,
+		Schemas:      schemas,
+		Constraints:  constraints,
+		UI:           ui,
+		Workspaces:   workspaces,
+		DirtyByType:  map[string]map[string]string{},
+		ObjectIssues: map[string]map[string][]ValidationIssue{},
 	}
+	objectIssues, err := collectObjectIssues(repoPath)
+	if err != nil {
+		return workspaceContext{}, err
+	}
+	ctx.ObjectIssues = objectIssues
 	if !readOnly {
 		entries, err := s.repo.ChangedEntries(repoPath)
 		if err != nil {
@@ -387,12 +428,18 @@ func (s *webServer) handleTypesHome(w http.ResponseWriter, r *http.Request, work
 			return
 		}
 		dirtyCount := len(ctx.DirtyByType[t])
-		summaries = append(summaries, typeSummary{Name: t, Count: len(objs), DirtyCount: dirtyCount})
+		summaries = append(summaries, typeSummary{
+			Name:       t,
+			Count:      len(objs),
+			DirtyCount: dirtyCount,
+			ConfigURL:  "/w/" + url.PathEscape(workspace) + "/config/types/" + url.PathEscape(t),
+		})
 	}
 
 	data := typesPageData{
 		pageBase: pageBase{
 			Top:        s.topBar(ctx, r.URL.Path),
+			Crumbs:     buildCrumbs(workspace),
 			Flash:      r.URL.Query().Get("flash"),
 			FlashError: r.URL.Query().Get("error") == "1",
 		},
@@ -423,6 +470,10 @@ func (s *webServer) handleTypeList(w http.ResponseWriter, r *http.Request, works
 		typeCfg.DisplayField = "_id"
 	}
 	extraFields := selectedExtraFields(typeCfg.Fields, schema, typeCfg.DisplayField)
+	primaryHeading := typeCfg.DisplayField
+	if primaryHeading == "_id" || primaryHeading == "" {
+		primaryHeading = "_id"
+	}
 
 	items := make([]objectListItem, 0, len(objects))
 	seen := map[string]struct{}{}
@@ -433,16 +484,25 @@ func (s *webServer) handleTypeList(w http.ResponseWriter, r *http.Request, works
 		for _, field := range extraFields {
 			fields = append(fields, namedValue{Name: field, Value: valueToText(obj.Data[field])})
 		}
+		issues := ctx.ObjectIssues[typeName][obj.ID]
+		invalid := len(issues) > 0
+		invalidSample := ""
+		if invalid {
+			invalidSample = issues[0].Message
+		}
 		idPath := url.PathEscape(obj.ID)
 		typePath := url.PathEscape(typeName)
+		primaryURL := "/w/" + url.PathEscape(workspace) + "/types/" + typePath + "/objects/" + idPath
 		items = append(items, objectListItem{
-			ID:        obj.ID,
-			Display:   displayValue(obj.Data, typeCfg.DisplayField, obj.ID),
-			Fields:    fields,
-			Dirty:     dirty,
-			Deleted:   false,
-			OpenURL:   "/w/" + url.PathEscape(workspace) + "/types/" + typePath + "/objects/" + idPath,
-			DeleteURL: "/w/" + url.PathEscape(workspace) + "/types/" + typePath + "/objects/" + idPath + "/delete",
+			ID:            obj.ID,
+			Display:       displayValue(obj.Data, typeCfg.DisplayField, obj.ID),
+			PrimaryURL:    primaryURL,
+			Fields:        fields,
+			Dirty:         dirty,
+			Deleted:       false,
+			Invalid:       invalid,
+			InvalidCount:  len(issues),
+			InvalidSample: invalidSample,
 		})
 	}
 
@@ -463,9 +523,11 @@ func (s *webServer) handleTypeList(w http.ResponseWriter, r *http.Request, works
 		}
 		typePath := url.PathEscape(typeName)
 		idPath := url.PathEscape(id)
+		primaryURL := "/w/" + url.PathEscape(workspace) + "/types/" + typePath + "/objects/" + idPath
 		items = append(items, objectListItem{
 			ID:         id,
 			Display:    deletedDisplay,
+			PrimaryURL: primaryURL,
 			Fields:     deletedFields,
 			Dirty:      status,
 			Deleted:    true,
@@ -486,16 +548,18 @@ func (s *webServer) handleTypeList(w http.ResponseWriter, r *http.Request, works
 	data := typePageData{
 		pageBase: pageBase{
 			Top:        s.topBar(ctx, r.URL.Path),
+			Crumbs:     buildCrumbs(workspace, typeName),
 			Flash:      r.URL.Query().Get("flash"),
 			FlashError: r.URL.Query().Get("error") == "1",
 		},
-		TypeName:      typeName,
-		ReadOnly:      ctx.ReadOnly,
-		DisplayField:  typeCfg.DisplayField,
-		ExtraFields:   extraFields,
-		Items:         items,
-		TypeConfigURL: "/w/" + url.PathEscape(workspace) + "/config/types/" + url.PathEscape(typeName),
-		NewItemURL:    "/w/" + url.PathEscape(workspace) + "/types/" + url.PathEscape(typeName) + "/new",
+		TypeName:       typeName,
+		ReadOnly:       ctx.ReadOnly,
+		DisplayField:   typeCfg.DisplayField,
+		PrimaryHeading: primaryHeading,
+		ExtraFields:    extraFields,
+		Items:          items,
+		TypeConfigURL:  "/w/" + url.PathEscape(workspace) + "/config/types/" + url.PathEscape(typeName),
+		NewItemURL:     "/w/" + url.PathEscape(workspace) + "/types/" + url.PathEscape(typeName) + "/new",
 	}
 	s.renderTemplate(w, "type.html", data)
 }
@@ -511,19 +575,21 @@ func (s *webServer) handleObjectPage(w http.ResponseWriter, r *http.Request, wor
 		http.NotFound(w, r)
 		return
 	}
+	fields := schemaToFieldData(schema)
+	s.enrichForeignKeys(&ctx, typeName, fields)
 
 	data := objectPageData{
 		pageBase: pageBase{
 			Top:        s.topBar(ctx, r.URL.Path),
+			Crumbs:     buildCrumbs(workspace, typeName, firstNonEmpty(id, "new")),
 			Flash:      r.URL.Query().Get("flash"),
 			FlashError: r.URL.Query().Get("error") == "1",
 		},
 		TypeName:    typeName,
 		ID:          id,
 		ReadOnly:    ctx.ReadOnly,
-		Fields:      schemaToFieldData(schema),
+		Fields:      fields,
 		FieldValues: map[string]string{},
-		BackURL:     "/w/" + url.PathEscape(workspace) + "/types/" + url.PathEscape(typeName),
 		WriteURL:    "/w/" + url.PathEscape(workspace) + "/types/" + url.PathEscape(typeName) + "/objects/write",
 	}
 	if id != "" {
@@ -553,11 +619,13 @@ func (s *webServer) handleObjectPage(w http.ResponseWriter, r *http.Request, wor
 		}
 		data.FieldValues[k] = valueToForm(v)
 	}
+	ensureForeignKeyCurrentOptions(data.Fields, data.FieldValues)
 	if workspace != "main" {
 		if mainObj, err := ReadObject(s.repo.Root, typeName, id); err == nil {
 			data.Diffs = computeDiffs(mainObj.Data, obj.Data)
 		}
 	}
+	data.InvalidIssues = ctx.ObjectIssues[typeName][id]
 	s.renderTemplate(w, "object.html", data)
 }
 
@@ -645,7 +713,11 @@ func (s *webServer) handleWorkspaceNewPage(w http.ResponseWriter, r *http.Reques
 	}
 	data := workspaceNewPageData{
 		pageBase: pageBase{
-			Top:        s.topBar(ctx, r.URL.Path),
+			Top: s.topBar(ctx, r.URL.Path),
+			Crumbs: []breadcrumb{
+				{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
+				{Label: "New Workspace", URL: r.URL.Path, Current: true},
+			},
 			Flash:      r.URL.Query().Get("flash"),
 			FlashError: r.URL.Query().Get("error") == "1",
 		},
@@ -739,7 +811,13 @@ func (s *webServer) handleWorkspacePromote(w http.ResponseWriter, r *http.Reques
 			})
 		}
 		data := conflictView{
-			pageBase:  pageBase{Top: s.topBar(ctx, r.URL.Path)},
+			pageBase: pageBase{
+				Top: s.topBar(ctx, r.URL.Path),
+				Crumbs: []breadcrumb{
+					{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
+					{Label: "Promote", URL: r.URL.Path, Current: true},
+				},
+			},
 			Workspace: workspace,
 			Conflicts: rows,
 			PostURL:   "/w/" + url.PathEscape(workspace) + "/promote",
@@ -787,7 +865,11 @@ func (s *webServer) handleConfigPage(w http.ResponseWriter, r *http.Request, wor
 	}
 	data := configPageData{
 		pageBase: pageBase{
-			Top:        s.topBar(ctx, r.URL.Path),
+			Top: s.topBar(ctx, r.URL.Path),
+			Crumbs: []breadcrumb{
+				{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
+				{Label: "Config", URL: "/w/" + url.PathEscape(workspace) + "/config", Current: true},
+			},
 			Flash:      r.URL.Query().Get("flash"),
 			FlashError: r.URL.Query().Get("error") == "1",
 		},
@@ -848,14 +930,27 @@ func (s *webServer) handleTypeConfigPage(w http.ResponseWriter, r *http.Request,
 	}
 
 	extraOrder := orderedFieldOptions(tc.Fields, schema, tc.DisplayField)
+	selectedOrder := map[string]int{}
+	for i, f := range tc.Fields {
+		selectedOrder[f] = i + 1
+	}
 	extraOptions := make([]extraOption, 0, len(extraOrder))
-	for _, field := range extraOrder {
-		extraOptions = append(extraOptions, extraOption{Name: field, Checked: contains(tc.Fields, field)})
+	for i, field := range extraOrder {
+		orderValue := 100 + i
+		if v, ok := selectedOrder[field]; ok {
+			orderValue = v
+		}
+		extraOptions = append(extraOptions, extraOption{Name: field, Checked: contains(tc.Fields, field), Order: orderValue})
 	}
 
 	data := typeConfigPageData{
 		pageBase: pageBase{
-			Top:        s.topBar(ctx, r.URL.Path),
+			Top: s.topBar(ctx, r.URL.Path),
+			Crumbs: []breadcrumb{
+				{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
+				{Label: "Config", URL: "/w/" + url.PathEscape(workspace) + "/config"},
+				{Label: typeName, URL: r.URL.Path, Current: true},
+			},
 			Flash:      r.URL.Query().Get("flash"),
 			FlashError: r.URL.Query().Get("error") == "1",
 		},
@@ -893,7 +988,8 @@ func (s *webServer) handleTypeConfigSave(w http.ResponseWriter, r *http.Request,
 	if tc.DisplayField == "" {
 		tc.DisplayField = "_id"
 	}
-	tc.Fields = dedupeOrdered(r.Form["extraField"])
+	selected := dedupeOrdered(r.Form["extraField"])
+	tc.Fields = sortSelectedFieldsByOrder(selected, r.Form)
 	cfg.Types[typeName] = tc
 
 	for _, issue := range ValidateUIConfig(cfg, ctx.Schemas) {
@@ -970,10 +1066,120 @@ func schemaToFieldData(schema Schema) []fieldData {
 	fields := make([]fieldData, 0, len(schema.Properties))
 	for name, prop := range schema.Properties {
 		_, required := schema.Required[name]
-		fields = append(fields, fieldData{Name: name, Type: prop.Type, ItemsType: prop.ItemsType, Required: required, Enum: prop.Enum})
+		fields = append(fields, fieldData{
+			Name:      name,
+			Type:      prop.Type,
+			ItemsType: prop.ItemsType,
+			Required:  required,
+			Enum:      prop.Enum,
+			MinLength: intPtrString(prop.MinLength),
+			MaxLength: intPtrString(prop.MaxLength),
+			Minimum:   floatPtrString(prop.Minimum),
+			Maximum:   floatPtrString(prop.Maximum),
+		})
 	}
 	sort.Slice(fields, func(i, j int) bool { return fields[i].Name < fields[j].Name })
 	return fields
+}
+
+func (s *webServer) enrichForeignKeys(ctx *workspaceContext, typeName string, fields []fieldData) {
+	if ctx == nil || len(fields) == 0 || len(ctx.Constraints.ForeignKeys) == 0 {
+		return
+	}
+	for i := range fields {
+		fieldName := fields[i].Name
+		var constraint *ForeignKeyConstraint
+		for j := range ctx.Constraints.ForeignKeys {
+			fk := &ctx.Constraints.ForeignKeys[j]
+			if fk.FromType == typeName && fk.FromField == fieldName {
+				constraint = fk
+				break
+			}
+		}
+		if constraint == nil {
+			continue
+		}
+		displayField := constraint.ToDisplayField
+		if strings.TrimSpace(displayField) == "" {
+			displayField = constraint.ToField
+		}
+
+		targets, err := ListObjectsForType(ctx.RepoPath, constraint.ToType)
+		if err != nil {
+			continue
+		}
+
+		options := make([]foreignKeyOption, 0, len(targets))
+		seenValues := map[string]struct{}{}
+		for _, target := range targets {
+			stored, ok := target.Data[constraint.ToField]
+			if !ok || stored == nil {
+				continue
+			}
+			value := valueToForm(stored)
+			if strings.TrimSpace(value) == "" {
+				continue
+			}
+			if _, ok := seenValues[value]; ok {
+				continue
+			}
+			seenValues[value] = struct{}{}
+
+			label := ""
+			if displayField == "_id" {
+				label = target.ID
+			} else if rawDisplay, ok := target.Data[displayField]; ok && rawDisplay != nil {
+				label = valueToText(rawDisplay)
+			}
+			if strings.TrimSpace(label) == "" {
+				label = value
+			}
+			options = append(options, foreignKeyOption{Value: value, Display: label})
+		}
+
+		sort.Slice(options, func(a, b int) bool {
+			if options[a].Display == options[b].Display {
+				return options[a].Value < options[b].Value
+			}
+			return options[a].Display < options[b].Display
+		})
+
+		fields[i].ForeignKey = &foreignKeyField{
+			ValueField:   constraint.ToField,
+			DisplayField: displayField,
+			Options:      options,
+		}
+	}
+}
+
+func ensureForeignKeyCurrentOptions(fields []fieldData, values map[string]string) {
+	if len(fields) == 0 || len(values) == 0 {
+		return
+	}
+	for i := range fields {
+		fk := fields[i].ForeignKey
+		if fk == nil {
+			continue
+		}
+		current := strings.TrimSpace(values[fields[i].Name])
+		if current == "" {
+			continue
+		}
+		found := false
+		for _, option := range fk.Options {
+			if option.Value == current {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		fk.Options = append(fk.Options, foreignKeyOption{
+			Value:   current,
+			Display: current + " (missing)",
+		})
+	}
 }
 
 func parseFormField(raw string, prop SchemaProperty) (any, error) {
@@ -983,10 +1189,8 @@ func parseFormField(raw string, prop SchemaProperty) (any, error) {
 	case "number", "integer":
 		n, err := strconv.ParseFloat(raw, 64)
 		if err != nil {
-			return nil, err
-		}
-		if prop.Type == "integer" && n != float64(int64(n)) {
-			return nil, errors.New("must be an integer")
+			// Keep invalid numeric drafts as strings; save/validate will catch.
+			return raw, nil
 		}
 		return n, nil
 	case "boolean":
@@ -996,24 +1200,28 @@ func parseFormField(raw string, prop SchemaProperty) (any, error) {
 		if raw == "false" {
 			return false, nil
 		}
-		return nil, errors.New("must be true or false")
+		return raw, nil
 	case "array":
 		parts := strings.Split(raw, ",")
 		arr := make([]any, 0, len(parts))
+		rawParts := make([]string, 0, len(parts))
 		for _, p := range parts {
 			p = strings.TrimSpace(p)
 			if p == "" {
 				continue
 			}
+			rawParts = append(rawParts, p)
 			if prop.ItemsType == "string" {
 				arr = append(arr, p)
 			} else {
 				n, err := strconv.ParseFloat(p, 64)
 				if err != nil {
-					return nil, err
-				}
-				if prop.ItemsType == "integer" && n != float64(int64(n)) {
-					return nil, errors.New("array items must be integers")
+					// Convert to all-strings array to preserve parseability.
+					strArr := make([]any, 0, len(rawParts))
+					for _, sp := range rawParts {
+						strArr = append(strArr, sp)
+					}
+					return strArr, nil
 				}
 				arr = append(arr, n)
 			}
@@ -1158,6 +1366,80 @@ func contains(values []string, candidate string) bool {
 	return false
 }
 
+func buildCrumbs(workspace string, parts ...string) []breadcrumb {
+	crumbs := []breadcrumb{
+		{
+			Label: "Types",
+			URL:   "/w/" + url.PathEscape(workspace) + "/types",
+		},
+	}
+	if len(parts) == 0 {
+		crumbs[0].Current = true
+		return crumbs
+	}
+	accumulated := crumbs[0].URL
+	for i, part := range parts {
+		accumulated += "/" + url.PathEscape(part)
+		crumbs = append(crumbs, breadcrumb{
+			Label: part,
+			URL:   accumulated,
+		})
+		if i == len(parts)-1 {
+			crumbs[len(crumbs)-1].Current = true
+		}
+	}
+	crumbs[0].Current = len(parts) == 0
+	return crumbs
+}
+
+func collectObjectIssues(repoPath string) (map[string]map[string][]ValidationIssue, error) {
+	result := map[string]map[string][]ValidationIssue{}
+	validation, err := ValidateRepository(repoPath)
+	if err != nil {
+		return result, err
+	}
+	for _, issue := range validation.Issues {
+		typeName, id, ok := parseDataObjectPath(issue.Path)
+		if !ok {
+			continue
+		}
+		if _, ok := result[typeName]; !ok {
+			result[typeName] = map[string][]ValidationIssue{}
+		}
+		result[typeName][id] = append(result[typeName][id], issue)
+	}
+	return result, nil
+}
+
+func sortSelectedFieldsByOrder(selected []string, form url.Values) []string {
+	type row struct {
+		field string
+		order int
+	}
+	rows := make([]row, 0, len(selected))
+	for i, field := range selected {
+		raw := strings.TrimSpace(form.Get("order." + field))
+		order := 100 + i
+		if raw != "" {
+			if v, err := strconv.Atoi(raw); err == nil {
+				order = v
+			}
+		}
+		rows = append(rows, row{field: field, order: order})
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].order == rows[j].order {
+			return rows[i].field < rows[j].field
+		}
+		return rows[i].order < rows[j].order
+	})
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.field)
+	}
+	return out
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
@@ -1165,4 +1447,18 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func intPtrString(v *int) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.Itoa(*v)
+}
+
+func floatPtrString(v *float64) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*v, 'f', -1, 64)
 }

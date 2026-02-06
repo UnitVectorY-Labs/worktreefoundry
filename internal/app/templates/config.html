@@ -9,6 +9,7 @@
 <body>
   {{template "topbar" .Top}}
   <main class="page">
+    {{template "breadcrumbs" .Crumbs}}
     {{if .Flash}}
     <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
     {{end}}
@@ -32,16 +33,17 @@
       <div class="panel-head">
         <h2>Type Display Configuration</h2>
       </div>
-      <div class="item-list">
-        {{range .TypeSettings}}
-        <article class="item-card">
-          <div class="row-between">
-            <div class="item-title">{{.TypeName}}</div>
-            <a class="btn" href="{{.URL}}">Configure</a>
-          </div>
-        </article>
-        {{end}}
-      </div>
+      <table class="table table-tight">
+        <thead><tr><th>Type</th><th>Settings</th></tr></thead>
+        <tbody>
+          {{range .TypeSettings}}
+          <tr>
+            <td>{{.TypeName}}</td>
+            <td><a class="btn" href="{{.URL}}">Configure</a></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
     </section>
   </main>
 </body>

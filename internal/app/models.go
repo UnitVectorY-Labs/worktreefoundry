@@ -61,10 +61,11 @@ type UniqueConstraint struct {
 }
 
 type ForeignKeyConstraint struct {
-	FromType  string `json:"fromType"`
-	FromField string `json:"fromField"`
-	ToType    string `json:"toType"`
-	ToField   string `json:"toField"`
+	FromType       string `json:"fromType"`
+	FromField      string `json:"fromField"`
+	ToType         string `json:"toType"`
+	ToField        string `json:"toField"`
+	ToDisplayField string `json:"toDisplayField,omitempty"`
 }
 
 type Object struct {

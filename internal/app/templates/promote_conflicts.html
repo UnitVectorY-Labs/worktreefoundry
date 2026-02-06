@@ -9,10 +9,10 @@
 <body>
   {{template "topbar" .Top}}
   <main class="page">
+    {{template "breadcrumbs" .Crumbs}}
     <section class="panel">
-      <div class="panel-head row-between">
+      <div class="panel-head">
         <h1>Resolve Conflicts</h1>
-        <a class="btn" href="{{.BackURL}}">Back</a>
       </div>
       <p>Promotion found field-level conflicts. Choose a value for each field.</p>
       <form method="post" action="{{.PostURL}}">
