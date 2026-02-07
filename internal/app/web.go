@@ -1430,7 +1430,12 @@ func (s *webServer) enrichForeignKeys(ctx *workspaceContext, typeName string, fi
 		}
 		displayField := constraint.ToDisplayField
 		if strings.TrimSpace(displayField) == "" {
-			displayField = constraint.ToField
+			// Fall back to the UI config display field for the target type
+			if targetCfg, ok := ctx.UI.Types[constraint.ToType]; ok && targetCfg.DisplayField != "" && targetCfg.DisplayField != "_id" {
+				displayField = targetCfg.DisplayField
+			} else {
+				displayField = constraint.ToField
+			}
 		}
 
 		targets, err := ListObjectsForType(ctx.RepoPath, constraint.ToType)
