@@ -177,10 +177,6 @@ a:hover { text-decoration: underline; }
   margin-bottom: 1rem;
 }
 
-.panel.slim {
-  max-width: 100%;
-}
-
 .subpanel {
   margin-top: 1rem;
   background: var(--surface-2);

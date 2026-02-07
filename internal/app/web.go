@@ -641,14 +641,12 @@ func (s *webServer) handleObjectPage(w http.ResponseWriter, r *http.Request, wor
 	markUniqueFields(fields, ctx.Constraints, typeName)
 	s.enrichForeignKeys(&ctx, typeName, fields)
 
-	crumbID := firstNonEmpty(id, "new")
-	crumbLabel := crumbID
 	typeCfg := ctx.UI.Types[typeName]
 
 	data := objectPageData{
 		pageBase: pageBase{
 			Top:        s.topBar(ctx, r.URL.Path),
-			Crumbs:     buildCrumbsWithLabels(workspace, map[string]string{crumbID: crumbLabel}, typeName, crumbID),
+			Crumbs:     buildCrumbs(workspace, typeName, firstNonEmpty(id, "new")),
 			Flash:      r.URL.Query().Get("flash"),
 			FlashError: r.URL.Query().Get("error") == "1",
 		},
@@ -1428,15 +1426,7 @@ func (s *webServer) enrichForeignKeys(ctx *workspaceContext, typeName string, fi
 		if constraint == nil {
 			continue
 		}
-		displayField := constraint.ToDisplayField
-		if strings.TrimSpace(displayField) == "" {
-			// Fall back to the UI config display field for the target type
-			if targetCfg, ok := ctx.UI.Types[constraint.ToType]; ok && targetCfg.DisplayField != "" && targetCfg.DisplayField != "_id" {
-				displayField = targetCfg.DisplayField
-			} else {
-				displayField = constraint.ToField
-			}
-		}
+		displayField := resolveDisplayField(ctx, constraint)
 
 		targets, err := ListObjectsForType(ctx.RepoPath, constraint.ToType)
 		if err != nil {
@@ -1791,6 +1781,16 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func resolveDisplayField(ctx *workspaceContext, constraint *ForeignKeyConstraint) string {
+	if display := strings.TrimSpace(constraint.ToDisplayField); display != "" {
+		return display
+	}
+	if targetCfg, ok := ctx.UI.Types[constraint.ToType]; ok && targetCfg.DisplayField != "" && targetCfg.DisplayField != "_id" {
+		return targetCfg.DisplayField
+	}
+	return constraint.ToField
 }
 
 func intPtrString(v *int) string {
