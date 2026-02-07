@@ -11,6 +11,23 @@
   --warn: #c05621;
   --danger: #b42318;
   --radius: 12px;
+  --mode-accent: var(--accent);
+  --mode-accent-soft: var(--accent-soft);
+}
+
+body.mode-main {
+  --mode-accent: #1f6db3;
+  --mode-accent-soft: #e6f0fb;
+}
+
+body.mode-workspace {
+  --mode-accent: #0e7c5e;
+  --mode-accent-soft: #e6f8f2;
+}
+
+body.mode-config {
+  --mode-accent: #7c3aed;
+  --mode-accent-soft: #f3eefb;
 }
 
 * { box-sizing: border-box; }
@@ -55,6 +72,23 @@ a:hover { text-decoration: underline; }
   color: var(--text);
 }
 
+.brand-block {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.brand-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.ws-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .workspace-state {
   font-size: 0.82rem;
   padding: 0.2rem 0.55rem;
@@ -90,6 +124,11 @@ a:hover { text-decoration: underline; }
   max-width: 1160px;
   margin: 1rem auto;
   padding: 0 1rem 2rem;
+}
+
+.mode-bar {
+  height: 3px;
+  background: var(--mode-accent);
 }
 
 .breadcrumbs {
@@ -139,7 +178,7 @@ a:hover { text-decoration: underline; }
 }
 
 .panel.slim {
-  max-width: 720px;
+  max-width: 100%;
 }
 
 .subpanel {
@@ -444,4 +483,65 @@ code {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+.unique-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+  font-weight: 600;
+}
+
+.fk-display {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+.confirm-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.confirm-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-2);
+}
+
+.confirm-item .confirm-file {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.confirm-item .confirm-status {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.schema-editor textarea {
+  width: 100%;
+  min-height: 300px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem;
+  background: white;
+  margin-top: 0.25rem;
+  resize: vertical;
+}
+
+.schema-editor textarea:focus {
+  outline: none;
+  border-color: var(--mode-accent);
+  box-shadow: 0 0 0 2px var(--mode-accent-soft);
 }

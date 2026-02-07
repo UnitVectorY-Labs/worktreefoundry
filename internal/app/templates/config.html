@@ -6,7 +6,8 @@
   <title>Configuration</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body class="mode-config">
+  <div class="mode-bar"></div>
   {{template "topbar" .Top}}
   <main class="page">
     {{template "breadcrumbs" .Crumbs}}
@@ -39,11 +40,41 @@
           {{range .TypeSettings}}
           <tr>
             <td>{{.TypeName}}</td>
-            <td><a class="btn" href="{{.URL}}">Configure</a></td>
+            <td><a class="btn" href="{{.URL}}">Display Settings</a></td>
           </tr>
           {{end}}
         </tbody>
       </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head row-between">
+        <h2>JSON Schemas</h2>
+        {{if not .ReadOnly}}
+        <a class="btn primary" href="{{.NewSchemaURL}}">New Type</a>
+        {{end}}
+      </div>
+      <table class="table table-tight">
+        <thead><tr><th>Type</th><th>Schema</th></tr></thead>
+        <tbody>
+          {{range .SchemaLinks}}
+          <tr>
+            <td>{{.TypeName}}</td>
+            <td><a class="btn" href="{{.URL}}">Edit Schema</a></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Constraints</h2>
+        <p>Unique fields and foreign key relationships.</p>
+      </div>
+      <div class="actions" style="margin-top:0.5rem;">
+        <a class="btn" href="{{.ConstraintsURL}}">Edit Constraints</a>
+      </div>
     </section>
   </main>
 </body>
