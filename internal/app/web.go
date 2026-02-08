@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -111,6 +113,7 @@ type fieldData struct {
 	Type       string
 	ItemsType  string
 	Required   bool
+	Unique     bool
 	Enum       []string
 	MinLength  string
 	MaxLength  string
@@ -144,10 +147,13 @@ type workspaceNewPageData struct {
 
 type configPageData struct {
 	pageBase
-	ReadOnly     bool
-	RepoName     string
-	SaveURL      string
-	TypeSettings []typeSettingLink
+	ReadOnly       bool
+	RepoName       string
+	SaveURL        string
+	TypeSettings   []typeSettingLink
+	SchemaLinks    []typeSettingLink
+	ConstraintsURL string
+	NewSchemaURL   string
 }
 
 type typeSettingLink struct {
@@ -192,6 +198,44 @@ type conflictRow struct {
 	Base           string
 	Main           string
 	WorkspaceValue string
+}
+
+type confirmSavePageData struct {
+	pageBase
+	Workspace string
+	Changes   []confirmChange
+	PostURL   string
+	BackURL   string
+}
+
+type confirmMergePageData struct {
+	pageBase
+	Workspace string
+	Changes   []confirmChange
+	PostURL   string
+	BackURL   string
+}
+
+type confirmChange struct {
+	File   string
+	Status string
+}
+
+type schemaEditPageData struct {
+	pageBase
+	ReadOnly bool
+	TypeName string
+	Content  string
+	SaveURL  string
+	BackURL  string
+}
+
+type constraintsEditPageData struct {
+	pageBase
+	ReadOnly bool
+	Content  string
+	SaveURL  string
+	BackURL  string
 }
 
 type workspaceContext struct {
@@ -293,11 +337,17 @@ func (s *webServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 	case len(tail) == 2 && tail[0] == "workspace" && tail[1] == "delete" && r.Method == http.MethodPost:
 		s.handleWorkspaceDelete(w, r, ws)
 		return
+	case len(tail) == 2 && tail[0] == "save" && tail[1] == "confirm" && r.Method == http.MethodGet:
+		s.handleSaveConfirmPage(w, r, ws)
+		return
 	case len(tail) == 1 && tail[0] == "save" && r.Method == http.MethodPost:
 		s.handleWorkspaceSave(w, r, ws)
 		return
-	case len(tail) == 1 && tail[0] == "promote" && r.Method == http.MethodPost:
-		s.handleWorkspacePromote(w, r, ws)
+	case len(tail) == 2 && tail[0] == "merge" && tail[1] == "confirm" && r.Method == http.MethodGet:
+		s.handleMergeConfirmPage(w, r, ws)
+		return
+	case len(tail) == 1 && tail[0] == "merge" && r.Method == http.MethodPost:
+		s.handleWorkspaceMerge(w, r, ws)
 		return
 	case len(tail) == 1 && tail[0] == "validate" && r.Method == http.MethodPost:
 		s.handleWorkspaceValidate(w, r, ws)
@@ -313,6 +363,18 @@ func (s *webServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	case len(tail) == 3 && tail[0] == "config" && tail[1] == "types" && r.Method == http.MethodPost:
 		s.handleTypeConfigSave(w, r, ws, tail[2])
+		return
+	case len(tail) == 4 && tail[0] == "config" && tail[1] == "schemas" && r.Method == http.MethodGet:
+		s.handleSchemaEditPage(w, r, ws, tail[2], tail[3])
+		return
+	case len(tail) == 4 && tail[0] == "config" && tail[1] == "schemas" && r.Method == http.MethodPost:
+		s.handleSchemaEditSave(w, r, ws, tail[2], tail[3])
+		return
+	case len(tail) == 2 && tail[0] == "config" && tail[1] == "constraints" && r.Method == http.MethodGet:
+		s.handleConstraintsEditPage(w, r, ws)
+		return
+	case len(tail) == 2 && tail[0] == "config" && tail[1] == "constraints" && r.Method == http.MethodPost:
+		s.handleConstraintsEditSave(w, r, ws)
 		return
 	default:
 		http.NotFound(w, r)
@@ -576,7 +638,10 @@ func (s *webServer) handleObjectPage(w http.ResponseWriter, r *http.Request, wor
 		return
 	}
 	fields := schemaToFieldData(schema)
+	markUniqueFields(fields, ctx.Constraints, typeName)
 	s.enrichForeignKeys(&ctx, typeName, fields)
+
+	typeCfg := ctx.UI.Types[typeName]
 
 	data := objectPageData{
 		pageBase: pageBase{
@@ -618,6 +683,10 @@ func (s *webServer) handleObjectPage(w http.ResponseWriter, r *http.Request, wor
 			continue
 		}
 		data.FieldValues[k] = valueToForm(v)
+	}
+	// Update breadcrumb to use display field value
+	if displayLabel := displayValue(obj.Data, typeCfg.DisplayField, ""); displayLabel != "" && displayLabel != id {
+		data.Crumbs = buildCrumbsWithLabels(workspace, map[string]string{id: displayLabel}, typeName, id)
 	}
 	ensureForeignKeyCurrentOptions(data.Fields, data.FieldValues)
 	if workspace != "main" {
@@ -765,9 +834,80 @@ func (s *webServer) handleWorkspaceSave(w http.ResponseWriter, r *http.Request, 
 	s.redirectWithFlash(w, r, returnPath, "Workspace saved", false)
 }
 
-func (s *webServer) handleWorkspacePromote(w http.ResponseWriter, r *http.Request, workspace string) {
+func (s *webServer) handleSaveConfirmPage(w http.ResponseWriter, r *http.Request, workspace string) {
 	if workspace == "main" {
-		s.redirectWithFlash(w, r, "/w/main/types", "main cannot be promoted", true)
+		s.redirectWithFlash(w, r, "/w/main/types", "main is read-only", true)
+		return
+	}
+	ctx, err := s.loadContext(workspace)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	entries, err := s.repo.ChangedEntries(ctx.RepoPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	changes := make([]confirmChange, 0, len(entries))
+	for _, e := range entries {
+		changes = append(changes, confirmChange{File: e.Path, Status: e.Status})
+	}
+	data := confirmSavePageData{
+		pageBase: pageBase{
+			Top: s.topBar(ctx, r.URL.Path),
+			Crumbs: []breadcrumb{
+				{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
+				{Label: "Save", URL: r.URL.Path, Current: true},
+			},
+		},
+		Workspace: workspace,
+		Changes:   changes,
+		PostURL:   "/w/" + url.PathEscape(workspace) + "/save",
+		BackURL:   "/w/" + url.PathEscape(workspace) + "/types",
+	}
+	s.renderTemplate(w, "confirm_save.html", data)
+}
+
+func (s *webServer) handleMergeConfirmPage(w http.ResponseWriter, r *http.Request, workspace string) {
+	if workspace == "main" {
+		s.redirectWithFlash(w, r, "/w/main/types", "main cannot be merged", true)
+		return
+	}
+	ctx, err := s.loadContext(workspace)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	branch := s.repo.BranchForWorkspace(workspace)
+	changedFiles, err := s.repo.DiffWorkspaceDataFiles(branch)
+	if err != nil {
+		s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/types", err.Error(), true)
+		return
+	}
+	changes := make([]confirmChange, 0, len(changedFiles))
+	for _, f := range changedFiles {
+		changes = append(changes, confirmChange{File: f, Status: "M"})
+	}
+	data := confirmMergePageData{
+		pageBase: pageBase{
+			Top: s.topBar(ctx, r.URL.Path),
+			Crumbs: []breadcrumb{
+				{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
+				{Label: "Merge", URL: r.URL.Path, Current: true},
+			},
+		},
+		Workspace: workspace,
+		Changes:   changes,
+		PostURL:   "/w/" + url.PathEscape(workspace) + "/merge",
+		BackURL:   "/w/" + url.PathEscape(workspace) + "/types",
+	}
+	s.renderTemplate(w, "confirm_merge.html", data)
+}
+
+func (s *webServer) handleWorkspaceMerge(w http.ResponseWriter, r *http.Request, workspace string) {
+	if workspace == "main" {
+		s.redirectWithFlash(w, r, "/w/main/types", "main cannot be merged", true)
 		return
 	}
 	returnPath := firstNonEmpty(r.FormValue("return"), "/w/"+url.PathEscape(workspace)+"/types")
@@ -815,18 +955,18 @@ func (s *webServer) handleWorkspacePromote(w http.ResponseWriter, r *http.Reques
 				Top: s.topBar(ctx, r.URL.Path),
 				Crumbs: []breadcrumb{
 					{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
-					{Label: "Promote", URL: r.URL.Path, Current: true},
+					{Label: "Merge", URL: r.URL.Path, Current: true},
 				},
 			},
 			Workspace: workspace,
 			Conflicts: rows,
-			PostURL:   "/w/" + url.PathEscape(workspace) + "/promote",
+			PostURL:   "/w/" + url.PathEscape(workspace) + "/merge",
 			BackURL:   returnPath,
 		}
 		s.renderTemplate(w, "promote_conflicts.html", data)
 		return
 	}
-	s.redirectWithFlash(w, r, "/w/main/types", "Workspace promoted to main", false)
+	s.redirectWithFlash(w, r, "/w/main/types", "Workspace merged to main", false)
 }
 
 func (s *webServer) handleWorkspaceValidate(w http.ResponseWriter, r *http.Request, workspace string) {
@@ -836,7 +976,24 @@ func (s *webServer) handleWorkspaceValidate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	returnPath := firstNonEmpty(r.FormValue("return"), "/w/"+url.PathEscape(workspace)+"/types")
-	result, err := ValidateRepository(ctx.RepoPath)
+
+	if ctx.ReadOnly {
+		// On main: validate directly
+		result, err := ValidateRepository(ctx.RepoPath)
+		if err != nil {
+			s.redirectWithFlash(w, r, returnPath, err.Error(), true)
+			return
+		}
+		if !result.OK() {
+			s.redirectWithFlash(w, r, returnPath, result.Issues[0].String(), true)
+			return
+		}
+		s.redirectWithFlash(w, r, returnPath, "Validation passed", false)
+		return
+	}
+
+	// On workspace: simulate merge then validate
+	result, err := s.repo.ValidateMergePreview(workspace)
 	if err != nil {
 		s.redirectWithFlash(w, r, returnPath, err.Error(), true)
 		return
@@ -845,7 +1002,7 @@ func (s *webServer) handleWorkspaceValidate(w http.ResponseWriter, r *http.Reque
 		s.redirectWithFlash(w, r, returnPath, result.Issues[0].String(), true)
 		return
 	}
-	s.redirectWithFlash(w, r, returnPath, "Validation passed", false)
+	s.redirectWithFlash(w, r, returnPath, "Validation passed (including merge preview)", false)
 }
 
 func (s *webServer) handleConfigPage(w http.ResponseWriter, r *http.Request, workspace string) {
@@ -860,8 +1017,10 @@ func (s *webServer) handleConfigPage(w http.ResponseWriter, r *http.Request, wor
 	}
 	sort.Strings(types)
 	links := make([]typeSettingLink, 0, len(types))
+	schemaLinks := make([]typeSettingLink, 0, len(types))
 	for _, t := range types {
 		links = append(links, typeSettingLink{TypeName: t, URL: "/w/" + url.PathEscape(workspace) + "/config/types/" + url.PathEscape(t)})
+		schemaLinks = append(schemaLinks, typeSettingLink{TypeName: t, URL: "/w/" + url.PathEscape(workspace) + "/config/schemas/edit/" + url.PathEscape(t)})
 	}
 	data := configPageData{
 		pageBase: pageBase{
@@ -873,10 +1032,13 @@ func (s *webServer) handleConfigPage(w http.ResponseWriter, r *http.Request, wor
 			Flash:      r.URL.Query().Get("flash"),
 			FlashError: r.URL.Query().Get("error") == "1",
 		},
-		ReadOnly:     ctx.ReadOnly,
-		RepoName:     ctx.UI.RepoName,
-		SaveURL:      "/w/" + url.PathEscape(workspace) + "/config",
-		TypeSettings: links,
+		ReadOnly:       ctx.ReadOnly,
+		RepoName:       ctx.UI.RepoName,
+		SaveURL:        "/w/" + url.PathEscape(workspace) + "/config",
+		TypeSettings:   links,
+		SchemaLinks:    schemaLinks,
+		ConstraintsURL: "/w/" + url.PathEscape(workspace) + "/config/constraints",
+		NewSchemaURL:   "/w/" + url.PathEscape(workspace) + "/config/schemas/new/new",
 	}
 	s.renderTemplate(w, "config.html", data)
 }
@@ -1003,6 +1165,160 @@ func (s *webServer) handleTypeConfigSave(w http.ResponseWriter, r *http.Request,
 	s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config/types/"+url.PathEscape(typeName), "Type configuration draft updated", false)
 }
 
+func (s *webServer) handleSchemaEditPage(w http.ResponseWriter, r *http.Request, workspace, action, typeName string) {
+	ctx, err := s.loadContext(workspace)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	content := ""
+	if typeName != "new" {
+		schemaPath := filepath.Join(ctx.RepoPath, "config", "schemas", typeName+".schema.json")
+		b, err := os.ReadFile(schemaPath)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		content = string(b)
+	} else {
+		content = `{
+  "type": "object",
+  "required": [],
+  "properties": {}
+}
+`
+	}
+	data := schemaEditPageData{
+		pageBase: pageBase{
+			Top: s.topBar(ctx, r.URL.Path),
+			Crumbs: []breadcrumb{
+				{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
+				{Label: "Config", URL: "/w/" + url.PathEscape(workspace) + "/config"},
+				{Label: "Schema: " + typeName, URL: r.URL.Path, Current: true},
+			},
+			Flash:      r.URL.Query().Get("flash"),
+			FlashError: r.URL.Query().Get("error") == "1",
+		},
+		ReadOnly: ctx.ReadOnly,
+		TypeName: typeName,
+		Content:  content,
+		SaveURL:  "/w/" + url.PathEscape(workspace) + "/config/schemas/" + url.PathEscape(action) + "/" + url.PathEscape(typeName),
+		BackURL:  "/w/" + url.PathEscape(workspace) + "/config",
+	}
+	s.renderTemplate(w, "schema_edit.html", data)
+}
+
+func (s *webServer) handleSchemaEditSave(w http.ResponseWriter, r *http.Request, workspace, action, typeName string) {
+	ctx, err := s.loadContext(workspace)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if ctx.ReadOnly {
+		s.redirectWithFlash(w, r, "/w/main/config", "main is read-only", true)
+		return
+	}
+	content := r.FormValue("content")
+	newTypeName := strings.TrimSpace(r.FormValue("typeName"))
+
+	if action == "new" {
+		if newTypeName == "" {
+			s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config/schemas/new/new", "type name is required", true)
+			return
+		}
+		typeName = newTypeName
+	}
+
+	// Validate the JSON schema content
+	if err := ValidateSchemaContent([]byte(content), typeName); err != nil {
+		redirectURL := "/w/" + url.PathEscape(workspace) + "/config/schemas/" + url.PathEscape(action) + "/" + url.PathEscape(typeName)
+		s.redirectWithFlash(w, r, redirectURL, err.Error(), true)
+		return
+	}
+
+	schemaPath := filepath.Join(ctx.RepoPath, "config", "schemas", typeName+".schema.json")
+	if err := os.MkdirAll(filepath.Dir(schemaPath), 0o755); err != nil {
+		s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config", err.Error(), true)
+		return
+	}
+	if err := os.WriteFile(schemaPath, []byte(content), 0o644); err != nil {
+		s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config", err.Error(), true)
+		return
+	}
+
+	// Ensure data directory exists for the type
+	dataDir := filepath.Join(ctx.RepoPath, "data", typeName)
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config", err.Error(), true)
+		return
+	}
+
+	s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config", "Schema for "+typeName+" updated", false)
+}
+
+func (s *webServer) handleConstraintsEditPage(w http.ResponseWriter, r *http.Request, workspace string) {
+	ctx, err := s.loadContext(workspace)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	content := ""
+	constraintPath := filepath.Join(ctx.RepoPath, "config", "constraints.json")
+	if b, err := os.ReadFile(constraintPath); err == nil {
+		content = string(b)
+	} else {
+		content = `{
+  "unique": [],
+  "foreignKeys": []
+}
+`
+	}
+	data := constraintsEditPageData{
+		pageBase: pageBase{
+			Top: s.topBar(ctx, r.URL.Path),
+			Crumbs: []breadcrumb{
+				{Label: "Types", URL: "/w/" + url.PathEscape(workspace) + "/types"},
+				{Label: "Config", URL: "/w/" + url.PathEscape(workspace) + "/config"},
+				{Label: "Constraints", URL: r.URL.Path, Current: true},
+			},
+			Flash:      r.URL.Query().Get("flash"),
+			FlashError: r.URL.Query().Get("error") == "1",
+		},
+		ReadOnly: ctx.ReadOnly,
+		Content:  content,
+		SaveURL:  "/w/" + url.PathEscape(workspace) + "/config/constraints",
+		BackURL:  "/w/" + url.PathEscape(workspace) + "/config",
+	}
+	s.renderTemplate(w, "constraints_edit.html", data)
+}
+
+func (s *webServer) handleConstraintsEditSave(w http.ResponseWriter, r *http.Request, workspace string) {
+	ctx, err := s.loadContext(workspace)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if ctx.ReadOnly {
+		s.redirectWithFlash(w, r, "/w/main/config", "main is read-only", true)
+		return
+	}
+	content := r.FormValue("content")
+
+	// Validate JSON parses as Constraints
+	var c Constraints
+	if err := json.Unmarshal([]byte(content), &c); err != nil {
+		s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config/constraints", "Invalid JSON: "+err.Error(), true)
+		return
+	}
+
+	constraintPath := filepath.Join(ctx.RepoPath, "config", "constraints.json")
+	if err := os.WriteFile(constraintPath, []byte(content), 0o644); err != nil {
+		s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config/constraints", err.Error(), true)
+		return
+	}
+	s.redirectWithFlash(w, r, "/w/"+url.PathEscape(workspace)+"/config", "Constraints updated", false)
+}
+
 func (s *webServer) resolveWorkspacePath(workspace string) (string, bool, error) {
 	if workspace == "" || workspace == "main" {
 		return s.repo.Root, true, nil
@@ -1082,6 +1398,17 @@ func schemaToFieldData(schema Schema) []fieldData {
 	return fields
 }
 
+func markUniqueFields(fields []fieldData, constraints Constraints, typeName string) {
+	for i := range fields {
+		for _, uc := range constraints.Unique {
+			if uc.Type == typeName && uc.Field == fields[i].Name {
+				fields[i].Unique = true
+				break
+			}
+		}
+	}
+}
+
 func (s *webServer) enrichForeignKeys(ctx *workspaceContext, typeName string, fields []fieldData) {
 	if ctx == nil || len(fields) == 0 || len(ctx.Constraints.ForeignKeys) == 0 {
 		return
@@ -1099,10 +1426,7 @@ func (s *webServer) enrichForeignKeys(ctx *workspaceContext, typeName string, fi
 		if constraint == nil {
 			continue
 		}
-		displayField := constraint.ToDisplayField
-		if strings.TrimSpace(displayField) == "" {
-			displayField = constraint.ToField
-		}
+		displayField := resolveDisplayField(ctx, constraint)
 
 		targets, err := ListObjectsForType(ctx.RepoPath, constraint.ToType)
 		if err != nil {
@@ -1367,6 +1691,10 @@ func contains(values []string, candidate string) bool {
 }
 
 func buildCrumbs(workspace string, parts ...string) []breadcrumb {
+	return buildCrumbsWithLabels(workspace, nil, parts...)
+}
+
+func buildCrumbsWithLabels(workspace string, labels map[string]string, parts ...string) []breadcrumb {
 	crumbs := []breadcrumb{
 		{
 			Label: "Types",
@@ -1380,8 +1708,14 @@ func buildCrumbs(workspace string, parts ...string) []breadcrumb {
 	accumulated := crumbs[0].URL
 	for i, part := range parts {
 		accumulated += "/" + url.PathEscape(part)
+		label := part
+		if labels != nil {
+			if l, ok := labels[part]; ok && l != "" {
+				label = l
+			}
+		}
 		crumbs = append(crumbs, breadcrumb{
-			Label: part,
+			Label: label,
 			URL:   accumulated,
 		})
 		if i == len(parts)-1 {
@@ -1447,6 +1781,16 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func resolveDisplayField(ctx *workspaceContext, constraint *ForeignKeyConstraint) string {
+	if display := strings.TrimSpace(constraint.ToDisplayField); display != "" {
+		return display
+	}
+	if targetCfg, ok := ctx.UI.Types[constraint.ToType]; ok && targetCfg.DisplayField != "" && targetCfg.DisplayField != "_id" {
+		return targetCfg.DisplayField
+	}
+	return constraint.ToField
 }
 
 func intPtrString(v *int) string {

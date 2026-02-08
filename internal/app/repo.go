@@ -207,7 +207,7 @@ func (r *Repository) ChangedEntries(repoPath string) ([]ChangedEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
+	lines := strings.Split(strings.TrimSuffix(strings.TrimSuffix(out, "\n"), "\r"), "\n")
 	var changed []ChangedEntry
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {

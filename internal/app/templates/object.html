@@ -6,7 +6,8 @@
   <title>{{.TypeName}} item</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body class="{{if .Top.OnMain}}mode-main{{else}}mode-workspace{{end}}">
+  <div class="mode-bar"></div>
   {{template "topbar" .Top}}
   <main class="page">
     {{template "breadcrumbs" .Crumbs}}
@@ -49,7 +50,7 @@
           {{$fieldName := .Name}}
           {{$fieldValue := index $.FieldValues .Name}}
           <div class="field-wrap" data-field="{{$fieldName}}">
-            <label>{{$fieldName}} {{if .Required}}*{{end}}</label>
+            <label>{{$fieldName}} {{if .Required}}*{{end}}{{if .Unique}}<span class="unique-badge">unique</span>{{end}}</label>
             {{if .ForeignKey}}
               <select name="field.{{$fieldName}}" data-type="{{if .Type}}{{.Type}}{{else}}string{{end}}" data-required="{{.Required}}" {{if $.ReadOnly}}disabled{{end}}>
                 <option value=""></option>
@@ -57,6 +58,9 @@
                   <option value="{{.Value}}" {{if eq $fieldValue .Value}}selected{{end}}>{{.Display}}</option>
                 {{end}}
               </select>
+              {{if and ($.ReadOnly) ($fieldValue)}}
+                {{range .ForeignKey.Options}}{{if eq $fieldValue .Value}}{{if ne .Display .Value}}<div class="fk-display">→ {{.Display}}</div>{{end}}{{end}}{{end}}
+              {{end}}
             {{else if eq .Type "string"}}
               {{if .Enum}}
                 <select name="field.{{$fieldName}}" data-type="string" data-required="{{.Required}}" data-enum="{{range $i, $e := .Enum}}{{if $i}}|{{end}}{{$e}}{{end}}" data-minlen="{{if .MinLength}}{{.MinLength}}{{end}}" data-maxlen="{{if .MaxLength}}{{.MaxLength}}{{end}}" {{if $.ReadOnly}}disabled{{end}}>

@@ -1,23 +1,29 @@
 {{define "topbar"}}
 <header class="topbar">
   <div class="topbar-left">
-    <a class="brand" href="/w/{{.Workspace}}/types">{{.RepoName}}</a>
+    <div class="brand-block">
+      <a class="brand" href="/w/main/types">Worktree Foundry</a>
+      <span class="brand-sub">{{.RepoName}}</span>
+    </div>
+    <div class="ws-switcher">
+      <label class="ws-label" for="workspace-switch">Workspace</label>
+      <select id="workspace-switch" class="ws-select" onchange="switchWorkspace(this)">
+        {{range .Workspaces}}
+        <option value="{{.Name}}" {{if eq $.Workspace .Name}}selected{{end}}>{{.Name}}{{if .Dirty}} *{{end}}</option>
+        {{end}}
+      </select>
+    </div>
     <span class="workspace-state {{if .WorkspaceDirty}}dirty{{else}}clean{{end}}">
       {{if .WorkspaceDirty}}Unsaved changes{{else}}Clean{{end}}
     </span>
   </div>
   <div class="topbar-right">
-    <label class="ws-label" for="workspace-switch">Workspace</label>
-    <select id="workspace-switch" class="ws-select" onchange="switchWorkspace(this)">
-      {{range .Workspaces}}
-      <option value="{{.Name}}" {{if eq $.Workspace .Name}}selected{{end}}>{{.Name}}{{if .Dirty}} *{{end}}</option>
-      {{end}}
-    </select>
-
+    {{if .OnMain}}
     <a class="btn" href="/w/{{.Workspace}}/workspace/new" title="Create workspace">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></svg>
-      Workspace
+      New Workspace
     </a>
+    {{end}}
 
     <a class="btn" href="/w/{{.Workspace}}/config" title="Configuration">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0 -6"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82a2 2 0 1 1 -2.83 2.83a1.65 1.65 0 0 0 -1.82 -.33a1.65 1.65 0 0 0 -1 1.51a2 2 0 1 1 -4 0a1.65 1.65 0 0 0 -1 -1.51a1.65 1.65 0 0 0 -1.82 .33a2 2 0 1 1 -2.83 -2.83a1.65 1.65 0 0 0 .33 -1.82a1.65 1.65 0 0 0 -1.51 -1a2 2 0 1 1 0 -4a1.65 1.65 0 0 0 1.51 -1a1.65 1.65 0 0 0 -.33 -1.82a2 2 0 1 1 2.83 -2.83a1.65 1.65 0 0 0 1.82 .33h.1a1.65 1.65 0 0 0 .9 -1.51a2 2 0 1 1 4 0a1.65 1.65 0 0 0 1 1.51a1.65 1.65 0 0 0 1.82 -.33a2 2 0 1 1 2.83 2.83a1.65 1.65 0 0 0 -.33 1.82v.1a1.65 1.65 0 0 0 1.51 .9a2 2 0 1 1 0 4a1.65 1.65 0 0 0 -1.51 1z"/></svg>
@@ -33,21 +39,15 @@
     </form>
 
     {{if not .OnMain}}
-    <form method="post" action="/w/{{.Workspace}}/save" class="inline-form">
-      <input type="hidden" name="return" value="{{.CurrentPath}}">
-      <button class="btn primary" type="submit" title="Save workspace commit">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2"/><path d="M6 12h12"/></svg>
-        Save
-      </button>
-    </form>
+    <a class="btn primary" href="/w/{{.Workspace}}/save/confirm" title="Save workspace commit">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2"/><path d="M6 12h12"/></svg>
+      Save
+    </a>
 
-    <form method="post" action="/w/{{.Workspace}}/promote" class="inline-form">
-      <input type="hidden" name="return" value="{{.CurrentPath}}">
-      <button class="btn primary" type="submit" title="Promote workspace to main">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 13l6 0"/><path d="M14 9l6 3l-6 3z"/></svg>
-        Promote
-      </button>
-    </form>
+    <a class="btn primary" href="/w/{{.Workspace}}/merge/confirm" title="Merge workspace to main">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 13l6 0"/><path d="M14 9l6 3l-6 3z"/></svg>
+      Merge
+    </a>
 
     <form method="post" action="/w/{{.Workspace}}/workspace/delete" class="inline-form">
       <button class="btn danger" type="submit" title="Delete workspace">

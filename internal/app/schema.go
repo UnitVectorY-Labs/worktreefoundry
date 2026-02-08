@@ -116,3 +116,13 @@ func normalizeSchema(typeName string, raw rawSchema) (Schema, error) {
 	}
 	return Schema{Type: typeName, Required: required, Properties: props}, nil
 }
+
+// ValidateSchemaContent checks that raw JSON is a valid schema for this application.
+func ValidateSchemaContent(content []byte, typeName string) error {
+	var raw rawSchema
+	if err := json.Unmarshal(content, &raw); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	_, err := normalizeSchema(typeName, raw)
+	return err
+}
