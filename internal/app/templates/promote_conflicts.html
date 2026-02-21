@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Promote Conflicts</title>
+  <title>Merge Conflicts</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body class="mode-workspace">
+  <div class="mode-bar"></div>
   {{template "topbar" .Top}}
   <main class="page">
     {{template "breadcrumbs" .Crumbs}}
@@ -14,7 +15,7 @@
       <div class="panel-head">
         <h1>Resolve Conflicts</h1>
       </div>
-      <p>Promotion found field-level conflicts. Choose a value for each field.</p>
+      <p>Merge found field-level conflicts. Choose a value for each field.</p>
       <form method="post" action="{{.PostURL}}">
         <input type="hidden" name="return" value="{{.BackURL}}">
         {{range .Conflicts}}
@@ -36,7 +37,7 @@
         </article>
         {{end}}
         <div class="actions" style="margin-top: 1rem;">
-          <button class="btn primary" type="submit">Complete Promotion</button>
+          <button class="btn primary" type="submit">Complete Merge</button>
         </div>
       </form>
     </section>
