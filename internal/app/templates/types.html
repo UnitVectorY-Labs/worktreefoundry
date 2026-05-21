@@ -6,7 +6,8 @@
   <title>Types</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body class="{{if .Top.OnMain}}mode-main{{else}}mode-workspace{{end}}">
+  <div class="mode-bar"></div>
   {{template "topbar" .Top}}
   <main class="page">
     {{template "breadcrumbs" .Crumbs}}
@@ -25,7 +26,6 @@
             <th>Type</th>
             <th>Count</th>
             <th>Drafts</th>
-            <th>Config</th>
           </tr>
         </thead>
         <tbody>
@@ -34,7 +34,6 @@
             <td><a href="/w/{{$.Top.Workspace}}/types/{{.Name}}">{{.Name}}</a></td>
             <td>{{.Count}}</td>
             <td>{{if gt .DirtyCount 0}}<span class="badge warn">{{.DirtyCount}} changed{{else}}<span class="muted">-{{end}}</span></td>
-            <td><a class="btn" href="{{.ConfigURL}}">Configure</a></td>
           </tr>
           {{end}}
         </tbody>

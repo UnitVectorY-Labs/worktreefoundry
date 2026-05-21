@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Edit Schema: {{.TypeName}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="mode-config">
+  <div class="mode-bar"></div>
+  {{template "topbar" .Top}}
+  <main class="page">
+    {{template "breadcrumbs" .Crumbs}}
+    {{if .Flash}}
+    <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
+    {{end}}
+
+    <section class="panel">
+      <div class="panel-head">
+        <h1>{{if eq .TypeName "new"}}New Type Schema{{else}}Schema: {{.TypeName}}{{end}}</h1>
+        <p>Edit the JSON Schema definition. Supported types: string, number, integer, boolean, array.</p>
+      </div>
+
+      <form method="post" action="{{.SaveURL}}" class="schema-editor">
+        {{if eq .TypeName "new"}}
+        <div class="field-wrap">
+          <label>Type Name</label>
+          <input type="text" name="typeName" placeholder="my-type" required style="max-width:300px">
+        </div>
+        {{end}}
+        <div class="field-wrap">
+          <label>JSON Schema</label>
+          <textarea name="content" rows="20" {{if .ReadOnly}}disabled{{end}}>{{.Content}}</textarea>
+        </div>
+        {{if not .ReadOnly}}
+        <div class="actions" style="margin-top:0.8rem;">
+          <button class="btn primary" type="submit">Save Schema</button>
+          <a class="btn" href="{{.BackURL}}">Cancel</a>
+        </div>
+        {{else}}
+        <div class="actions" style="margin-top:0.8rem;">
+          <a class="btn" href="{{.BackURL}}">Back</a>
+        </div>
+        {{end}}
+      </form>
+    </section>
+  </main>
+</body>
+</html>

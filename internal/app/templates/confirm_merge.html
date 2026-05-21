@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Confirm Merge</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="mode-workspace">
+  <div class="mode-bar"></div>
+  {{template "topbar" .Top}}
+  <main class="page">
+    {{template "breadcrumbs" .Crumbs}}
+
+    <section class="panel">
+      <div class="panel-head">
+        <h1>Confirm Merge</h1>
+        <p>Review the changes below before merging workspace <strong>{{.Workspace}}</strong> into main.</p>
+      </div>
+
+      {{if .Changes}}
+      <form method="post" action="{{.PostURL}}">
+        <input type="hidden" name="return" value="{{.BackURL}}">
+        <div class="actions" style="margin-bottom:0.8rem;">
+          <button class="btn primary" type="submit">Merge to Main</button>
+          <a class="btn" href="{{.BackURL}}">Cancel</a>
+        </div>
+
+        <div class="confirm-list">
+          {{range .Changes}}
+          <div class="confirm-item">
+            <div class="confirm-file">{{.File}}</div>
+            <div class="confirm-status">Changed</div>
+          </div>
+          {{end}}
+        </div>
+      </form>
+      {{else}}
+      <div class="empty-state">
+        <p>No data changes to merge.</p>
+        <a class="btn" href="{{.BackURL}}">Back</a>
+      </div>
+      {{end}}
+    </section>
+  </main>
+</body>
+</html>

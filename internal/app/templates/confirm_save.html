@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Confirm Save</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="mode-workspace">
+  <div class="mode-bar"></div>
+  {{template "topbar" .Top}}
+  <main class="page">
+    {{template "breadcrumbs" .Crumbs}}
+
+    <section class="panel">
+      <div class="panel-head">
+        <h1>Confirm Save</h1>
+        <p>Review the changes below before saving workspace <strong>{{.Workspace}}</strong>.</p>
+      </div>
+
+      {{if .Changes}}
+      <form method="post" action="{{.PostURL}}">
+        <input type="hidden" name="return" value="{{.BackURL}}">
+        <div class="actions" style="margin-bottom:0.8rem;">
+          <button class="btn primary" type="submit">Save Workspace</button>
+          <a class="btn" href="{{.BackURL}}">Cancel</a>
+        </div>
+
+        <div class="confirm-list">
+          {{range .Changes}}
+          <div class="confirm-item">
+            <div class="confirm-file">{{.File}}</div>
+            <div class="confirm-status">
+              {{if eq .Status "A"}}Added{{else if eq .Status "D"}}Deleted{{else}}Modified{{end}}
+            </div>
+          </div>
+          {{end}}
+        </div>
+      </form>
+      {{else}}
+      <div class="empty-state">
+        <p>No changes to save.</p>
+        <a class="btn" href="{{.BackURL}}">Back</a>
+      </div>
+      {{end}}
+    </section>
+  </main>
+</body>
+</html>

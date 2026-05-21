@@ -6,7 +6,8 @@
   <title>{{.TypeName}}</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body class="{{if .Top.OnMain}}mode-main{{else}}mode-workspace{{end}}">
+  <div class="mode-bar"></div>
   {{template "topbar" .Top}}
   <main class="page">
     {{template "breadcrumbs" .Crumbs}}
@@ -18,7 +19,6 @@
       <div class="panel-head row-between">
         <h1>{{.TypeName}}</h1>
         <div class="actions">
-          <a class="btn" href="{{.TypeConfigURL}}">Type Config</a>
           {{if not .ReadOnly}}
           <a class="btn primary" href="{{.NewItemURL}}">Add Item</a>
           {{end}}

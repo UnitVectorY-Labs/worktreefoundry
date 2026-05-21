@@ -6,14 +6,15 @@
   <title>New Workspace</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body class="mode-main">
+  <div class="mode-bar"></div>
   {{template "topbar" .Top}}
   <main class="page">
     {{template "breadcrumbs" .Crumbs}}
     {{if .Flash}}
     <section class="notice {{if .FlashError}}error{{else}}ok{{end}}">{{.Flash}}</section>
     {{end}}
-    <section class="panel slim">
+    <section class="panel">
       <div class="panel-head">
         <h1>Create Workspace</h1>
         <p>Workspace names may include letters, numbers, dashes, underscores, and periods.</p>

@@ -150,6 +150,10 @@ func (r *Repository) MergeWorkspace(name string, resolutions map[string]string, 
 }
 
 func (r *Repository) diffWorkspaceDataFiles(branch string) ([]string, error) {
+	return r.DiffWorkspaceDataFiles(branch)
+}
+
+func (r *Repository) DiffWorkspaceDataFiles(branch string) ([]string, error) {
 	out, err := r.runGit(r.Root, "diff", "--name-only", "main.."+branch, "--", "data")
 	if err != nil {
 		return nil, err
@@ -375,4 +379,109 @@ func objectFromPathAndData(rel string, data map[string]any) (Object, error) {
 		obj.Data["_type"] = typeName
 	}
 	return obj, nil
+}
+
+// ValidateMergePreview simulates merging the workspace into main and validates the merged result.
+func (r *Repository) ValidateMergePreview(name string) (ValidationResult, error) {
+	path := r.WorkspacePath(name)
+	if _, err := os.Stat(path); err != nil {
+		return ValidationResult{}, fmt.Errorf("workspace %q not found", name)
+	}
+
+	// First validate the workspace itself
+	wsResult, err := ValidateRepository(path)
+	if err != nil {
+		return ValidationResult{}, err
+	}
+	if !wsResult.OK() {
+		return wsResult, nil
+	}
+
+	// Check if main has uncommitted changes
+	mainChanged, err := r.ChangedFiles(r.Root)
+	if err != nil {
+		return ValidationResult{}, err
+	}
+	if len(mainChanged) > 0 {
+		result := ValidationResult{}
+		result.Add(ValidationIssue{Stage: "merge-preview", Message: "main has uncommitted changes; cannot preview merge"})
+		return result, nil
+	}
+
+	branch := r.BranchForWorkspace(name)
+	changedFiles, err := r.DiffWorkspaceDataFiles(branch)
+	if err != nil {
+		return ValidationResult{}, err
+	}
+	if len(changedFiles) == 0 {
+		// No data changes to merge — workspace validates clean
+		return wsResult, nil
+	}
+
+	// Simulate the merge: apply workspace changes onto main in a temp directory
+	tmpDir, err := os.MkdirTemp("", "worktreefoundry-merge-preview-*")
+	if err != nil {
+		return ValidationResult{}, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Copy main's config and data directories to temp
+	if err := copyDir(filepath.Join(r.Root, "config"), filepath.Join(tmpDir, "config")); err != nil {
+		return ValidationResult{}, err
+	}
+	if err := copyDir(filepath.Join(r.Root, "data"), filepath.Join(tmpDir, "data")); err != nil {
+		return ValidationResult{}, err
+	}
+
+	// Apply workspace data files (config changes from workspace also)
+	if err := copyDir(filepath.Join(path, "config"), filepath.Join(tmpDir, "config")); err != nil {
+		return ValidationResult{}, err
+	}
+
+	// Apply changed data files from workspace onto the preview
+	for _, rel := range changedFiles {
+		srcPath := filepath.Join(path, filepath.FromSlash(rel))
+		dstPath := filepath.Join(tmpDir, filepath.FromSlash(rel))
+		if _, err := os.Stat(srcPath); err != nil {
+			// File deleted in workspace
+			_ = os.Remove(dstPath)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+			return ValidationResult{}, err
+		}
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			return ValidationResult{}, err
+		}
+		if err := os.WriteFile(dstPath, data, 0o644); err != nil {
+			return ValidationResult{}, err
+		}
+	}
+
+	return ValidateRepository(tmpDir)
+}
+
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
 }
