@@ -162,10 +162,10 @@ func (r *Repository) ListWorkspaces() ([]Workspace, error) {
 			continue
 		}
 		ws := Workspace{}
-		lines := strings.Split(block, "\n")
-		for _, line := range lines {
-			if strings.HasPrefix(line, "worktree ") {
-				ws.Path = strings.TrimPrefix(line, "worktree ")
+		lines := strings.SplitSeq(block, "\n")
+		for line := range lines {
+			if after, ok := strings.CutPrefix(line, "worktree "); ok {
+				ws.Path = after
 			}
 			if strings.HasPrefix(line, "branch ") {
 				b := strings.TrimPrefix(line, "branch refs/heads/")

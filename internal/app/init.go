@@ -188,8 +188,8 @@ func ensureGitignoreDefaults(root string) error {
 }
 
 func containsGitignoreLine(content, line string) bool {
-	lines := strings.Split(content, "\n")
-	for _, l := range lines {
+	lines := strings.SplitSeq(content, "\n")
+	for l := range lines {
 		if strings.TrimSpace(l) == line {
 			return true
 		}

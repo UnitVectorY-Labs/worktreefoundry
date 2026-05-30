@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -781,11 +782,11 @@ func (s *webServer) handleWorkspacePromote(w http.ResponseWriter, r *http.Reques
 		if len(vals) == 0 {
 			continue
 		}
-		if strings.HasPrefix(key, "resolve.") {
-			resolutions[strings.TrimPrefix(key, "resolve.")] = vals[0]
+		if after, ok := strings.CutPrefix(key, "resolve."); ok {
+			resolutions[after] = vals[0]
 		}
-		if strings.HasPrefix(key, "manual.") {
-			manual[strings.TrimPrefix(key, "manual.")] = vals[0]
+		if after, ok := strings.CutPrefix(key, "manual."); ok {
+			manual[after] = vals[0]
 		}
 	}
 	result, err := s.repo.MergeWorkspace(workspace, resolutions, manual)
@@ -1358,12 +1359,7 @@ func orderedFieldOptions(configured []string, schema Schema, displayField string
 }
 
 func contains(values []string, candidate string) bool {
-	for _, v := range values {
-		if v == candidate {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, candidate)
 }
 
 func buildCrumbs(workspace string, parts ...string) []breadcrumb {
@@ -1377,12 +1373,13 @@ func buildCrumbs(workspace string, parts ...string) []breadcrumb {
 		crumbs[0].Current = true
 		return crumbs
 	}
-	accumulated := crumbs[0].URL
+	var accumulated strings.Builder
+	accumulated.WriteString(crumbs[0].URL)
 	for i, part := range parts {
-		accumulated += "/" + url.PathEscape(part)
+		accumulated.WriteString("/" + url.PathEscape(part))
 		crumbs = append(crumbs, breadcrumb{
 			Label: part,
-			URL:   accumulated,
+			URL:   accumulated.String(),
 		})
 		if i == len(parts)-1 {
 			crumbs[len(crumbs)-1].Current = true
