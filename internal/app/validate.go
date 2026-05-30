@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -239,13 +240,7 @@ func validateProperty(field string, value any, prop SchemaProperty, path string,
 			result.Add(ValidationIssue{Stage: "schema", Path: path, Field: field, Message: fmt.Sprintf("length must be <= %d", *prop.MaxLength)})
 		}
 		if len(prop.Enum) > 0 {
-			matched := false
-			for _, e := range prop.Enum {
-				if s == e {
-					matched = true
-					break
-				}
-			}
+			matched := slices.Contains(prop.Enum, s)
 			if !matched {
 				result.Add(ValidationIssue{Stage: "schema", Path: path, Field: field, Message: "value must be one of enum values"})
 			}
