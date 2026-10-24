@@ -1,6 +1,7 @@
 name: worktreefoundry
 default_branch: main
 config:
+  osv: sarif
   description: "A schema-driven tool for managing configuration data stored in a Git repository."
   license: MIT
   language: go
