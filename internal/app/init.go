@@ -1,7 +1,8 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -201,7 +202,7 @@ func writeJSONFile(path string, value any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(value, "", "  ")
+	b, err := json.Marshal(value, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}
