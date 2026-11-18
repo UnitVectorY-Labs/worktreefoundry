@@ -1,7 +1,8 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,7 +90,7 @@ func SaveUIConfig(root string, cfg UIConfig) error {
 		normalized.Types[t] = tc
 	}
 
-	b, err := json.MarshalIndent(normalized, "", "  ")
+	b, err := json.Marshal(normalized, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}
