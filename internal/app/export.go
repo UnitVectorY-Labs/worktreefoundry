@@ -1,7 +1,8 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,7 +53,7 @@ func ExportRepository(root, outDir string) error {
 			}
 			rows = append(rows, row)
 		}
-		b, err := json.MarshalIndent(rows, "", "  ")
+		b, err := json.Marshal(rows, jsontext.WithIndent("  "), json.Deterministic(true))
 		if err != nil {
 			return err
 		}
